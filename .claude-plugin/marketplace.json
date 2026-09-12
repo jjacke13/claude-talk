@@ -1,0 +1,14 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "claude-talk",
+  "description": "Local voice in/out for Claude Code (whisper.cpp + piper)",
+  "owner": { "name": "Vaios K" },
+  "plugins": [
+    {
+      "name": "talk",
+      "description": "Local voice for Claude Code — push-to-talk via whisper.cpp into the session, replies spoken with piper.",
+      "category": "productivity",
+      "source": "./"
+    }
+  ]
+}

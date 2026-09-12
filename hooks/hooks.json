@@ -1,0 +1,16 @@
+{
+  "description": "claude-talk: speak the reply after each turn (mode from ~/.claude/channels/talk/config)",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun \"${CLAUDE_PLUGIN_ROOT}/bin/speak-last\"",
+            "timeout": 20
+          }
+        ]
+      }
+    ]
+  }
+}
