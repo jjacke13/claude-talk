@@ -54,3 +54,7 @@ test('sanitizeForSpeech: drops Sources section and link-only lines', () => {
   const md = 'Nobody has it yet.\n\n- [repo one](https://x/a)\n- see [docs](https://x/b) for detail\n\nSources: [a2a topic](https://x/c), [mcp docs](https://x/d)'
   expect(sanitizeForSpeech(md)).toBe('Nobody has it yet. see docs for detail')
 })
+
+test('sanitizeForSpeech: owner/repo and paths read as last segment; dates untouched', () => {
+  expect(sanitizeForSpeech('See jcwatson11/claude-a2a and docs/superpowers/specs on 12/09.')).toBe('See claude-a2a and specs on 12/09.')
+})

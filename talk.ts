@@ -79,6 +79,7 @@ export function sanitizeForSpeech(md: string, maxChars = 1200): string {
     .replace(/(?<!\w)_|_(?!\w)/g, '')             // _emphasis_ but not snake_case
     .replace(/~(?=\/|\s|$)/g, '')                 // lone ~ (paths)
     .replace(/https?:\/\/\S+/g, 'link')        // bare URLs
+    .replace(/(?<![\w\/~.])[A-Za-z][\w.-]*(?:\/[\w.-]+)+(?![\w\/])/g, m => m.split('/').pop()!)   // owner/repo, a/b/c → last segment
     .replace(/\s+/g, ' ')
     .trim()
   if (t.length > maxChars) {
