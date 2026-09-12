@@ -1,5 +1,7 @@
 # claude-talk
 
+> AI agent setting this up? Read [AGENTS.md](AGENTS.md) — step-by-step, verifiable.
+
 Local voice for Claude Code. Speak → **whisper.cpp** → your words land in the session
 as a normal turn. Claude answers → **piper** → your speakers. Nothing leaves the machine.
 
