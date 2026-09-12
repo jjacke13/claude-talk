@@ -64,6 +64,8 @@ export function resolveConfig(fileText: string, env: Record<string, string | und
 // Markdown → something a TTS voice can read. Code is dropped, not read aloud.
 export function sanitizeForSpeech(md: string, maxChars = 1200): string {
   let t = md
+    .replace(/^\s*sources?:[\s\S]*$/im, " ")     // trailing "Sources:" section — never read aloud
+    .replace(/^\s*[-*+]?\s*\[[^\]]+\]\([^)]*\)\s*$/gm, " ")   // lines that are only a link
     .replace(/```[\s\S]*?```/g, ' ')          // fenced code blocks
     .replace(/`[^`\n]*`/g, ' ')                // inline code
     .replace(/^\s*\|.*\|\s*$/gm, ' ')          // table rows

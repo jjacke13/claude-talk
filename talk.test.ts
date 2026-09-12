@@ -49,3 +49,8 @@ test('platform audio defaults + splitCmd', () => {
   expect(resolveConfig('TALK_PLAYER=ffplay -i pipe:0 -ar {rate}', {}, '/h', 'win32').TALK_PLAYER).toBe('ffplay -i pipe:0 -ar {rate}')
   expect(splitCmd(' pw-play  --rate {rate} {raw} - ', { rate: '22050', raw: '/t/x.raw' })).toEqual(['pw-play', '--rate', '22050', '/t/x.raw', '-'])
 })
+
+test('sanitizeForSpeech: drops Sources section and link-only lines', () => {
+  const md = 'Nobody has it yet.\n\n- [repo one](https://x/a)\n- see [docs](https://x/b) for detail\n\nSources: [a2a topic](https://x/c), [mcp docs](https://x/d)'
+  expect(sanitizeForSpeech(md)).toBe('Nobody has it yet. see docs for detail')
+})
