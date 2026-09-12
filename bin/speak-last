@@ -27,7 +27,7 @@ if (last && !state.texts.some(t => t.trim() === last)) state.texts.push(last)
 let [prevKey, prevCount, prevSpeak] = ['-1', '0', '']
 try { [prevKey, prevCount, prevSpeak] = readFileSync(PROGRESS, 'utf8').trim().split(' ') } catch {}
 const sameTurn = prevKey === String(state.key)
-if (!sameTurn) clearSpoken()
+
 const speakThisTurn = sameTurn ? prevSpeak === '1' : shouldSpeak(cfg.TALK_SPEAK, takeSpoken())
 const done = sameTurn ? Number(prevCount) || 0 : 0
 writeFileSync(PROGRESS, `${state.key} ${state.texts.length} ${speakThisTurn ? 1 : 0}`)
@@ -37,7 +37,8 @@ const spoken = readSpoken()
 const max = Number(cfg.TALK_MAX_SPEAK_CHARS) || 1200
 const parts = state.texts.slice(done).map(t => sanitizeForSpeech(t, max)).filter(t => t && !spoken.has(t))
 if (event === 'PreToolUse') parts.push(sanitizeForSpeech(toolNarration(String(input.tool_name ?? ''), input.tool_input), max))
-const text = parts.filter(Boolean).join(' ')
+const text = parts.filter(Boolean).join(" ")
+if (event === "Stop") clearSpoken()   // turn is over: forget what the speak tool said
 if (!text) process.exit(0)
 
 const pid = enqueueSpeech(text, !sameTurn)
