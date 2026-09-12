@@ -41,6 +41,7 @@ Keys and defaults:
 | `TALK_RECORDER` | `pw-record --raw --rate 16000 --channels 1 --format s16 {raw}` (Linux) / SoX `rec …` elsewhere | argv template; must write raw s16le 16 kHz mono to `{raw}` |
 | `TALK_KEY` | `KEY_RIGHTALT` | hold-to-talk key (name or evdev code) |
 | `TALK_SPEED` | `1.0` | speech rate: 1.3 = faster, 0.8 = slower (0.5–3) |
+| `TALK_NARRATE` | `off` | `on` = also speak a one-line description of each tool call as it starts |
 | `TALK_MAX_SPEAK_CHARS` | `1200` | cut longer replies at a sentence boundary |
 
 ---
@@ -57,7 +58,7 @@ Keys and defaults:
 
 ### `lang <code>` · `model <path>` · `voice <path>` · `speak mirror|on|off` · `player <cmd>` · `max <chars>`
 
-Set the matching key (`TALK_LANG`, `TALK_MODEL`, `TALK_VOICE`, `TALK_SPEAK`, `TALK_PLAYER`, `TALK_RECORDER`, `TALK_KEY`, `TALK_SPEED`,
+Set the matching key (`TALK_LANG`, `TALK_MODEL`, `TALK_VOICE`, `TALK_SPEAK`, `TALK_PLAYER`, `TALK_RECORDER`, `TALK_KEY`, `TALK_SPEED`, `TALK_NARRATE`,
 `TALK_MAX_SPEAK_CHARS`). Keep other lines. Create the directory with `mkdir -p` if needed.
 For `model`/`voice`, `test -f` the path first and refuse with a clear message if absent
 (a non-English model needs a multilingual ggml, e.g. `ggml-base.bin`, not `*.en.bin`).

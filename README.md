@@ -55,9 +55,10 @@ as usual. The reply is spoken according to `TALK_SPEAK`:
 - `mirror` (default) — spoken only when the turn came from `talk`
 - `on` — every reply · `off` — never
 
-Code blocks, inline code and tables are never read aloud; long replies are cut at a
-sentence boundary (`TALK_MAX_SPEAK_CHARS`, default 1200). A new reply interrupts one
-still being spoken.
+Code blocks and tables are never read aloud (short inline code is spoken as words); long
+replies are cut at a sentence boundary (`TALK_MAX_SPEAK_CHARS`, default 1200). Mid-turn
+progress comes from the `speak` tool Claude calls in its own words; `TALK_NARRATE=on` adds a
+one-line description of each tool call. Speech queues in order; pressing the talk key stops it.
 
 ## Configure
 

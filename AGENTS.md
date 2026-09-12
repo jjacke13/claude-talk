@@ -75,6 +75,7 @@ moves the directory). Write it directly or, inside a session, use `/talk:configu
 | `speak mirror\|on\|off` | `TALK_SPEAK` | `mirror` | mirror = speak only replies to spoken turns |
 | `speed <0.5-3>` | `TALK_SPEED` | `1.0` | 1.3 faster, 0.8 slower |
 | `key <KEY_NAME>` | `TALK_KEY` | `KEY_RIGHTALT` | `KEY_RIGHTCTRL`, `KEY_PAUSE`, `KEY_F12`, or evdev code |
+| `narrate on|off` | `TALK_NARRATE` | `off` | `on` = speak a one-line description of each tool call as it starts |
 | `player <cmd>` | `TALK_PLAYER` | PipeWire on Linux, SoX `play` elsewhere | argv template, `{rate}` placeholder, raw s16 mono on stdin |
 | `recorder <cmd>` | `TALK_RECORDER` | PipeWire on Linux, SoX `rec` elsewhere | argv template, must write raw s16le 16 kHz mono to `{raw}` |
 | `max <chars>` | `TALK_MAX_SPEAK_CHARS` | `1200` | sentence-boundary cut for long replies |
@@ -156,3 +157,13 @@ claude --dangerously-load-development-channels plugin:talk@claude-talk
 
 Check: `bun say.exe`-style paths are not needed — `bun <plugin-root>\bin\say hello` must be audible,
 then hold Right Alt and speak. No `input` group step on Windows.
+
+## How speech is timed (for the agent answering a spoken turn)
+
+- Claude Code appends most in-turn prose to the transcript only when the turn ends, so the
+  `Stop` hook is what reads your final reply aloud.
+- For progress **during** a turn, call the plugin's `speak` tool (`mcp__plugin_talk_talk__speak {text}`)
+  with one short sentence in your own words before a long step. It plays immediately, queued
+  after whatever is still being spoken, and the Stop hook will not repeat it.
+- Do not narrate every tool call; `TALK_NARRATE=on` exists for users who want that automatically.
+- Speech is only interrupted by the user pressing the talk key.
