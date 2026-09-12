@@ -1,10 +1,15 @@
 #!/usr/bin/env bun
-// say "text"  |  echo text | say     → speaks with the configured piper voice
+// say [--after PID] "text"  |  echo text | say     → speaks with the configured piper voice.
+// --after PID: wait until that process (an earlier `say`) has exited, so blocks play in order.
 import { loadConfig, log, say } from '../voice.ts'
-const text = (process.argv.slice(2).join(' ') || await new Response(Bun.stdin.stream()).text()).trim()
+const argv = process.argv.slice(2)
+const i = argv.indexOf('--after')
+const after = i >= 0 ? Number(argv[i + 1]) : 0
+if (i >= 0) argv.splice(i, 2)
+const text = (argv.join(' ') || await new Response(Bun.stdin.stream()).text()).trim()
 if (!text) process.exit(0)
-let piper, player
+let piper: any, player: any
+for (const s of ['SIGTERM', 'SIGINT'] as const) process.on(s, () => { piper?.kill(); player?.kill(); process.exit(0) })
+while (after) { try { process.kill(after, 0); await Bun.sleep(100) } catch { break } }
 try { ({ piper, player } = say(loadConfig(), text)) } catch (e) { log(String((e as Error).message)); process.exit(1) }
-// speak-last interrupts an older reply by SIGTERM-ing this wrapper: take the children down too.
-for (const s of ['SIGTERM', 'SIGINT'] as const) process.on(s, () => { piper.kill(); player.kill(); process.exit(0) })
 process.exit(await player.exited)

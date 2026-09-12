@@ -1,16 +1,11 @@
 {
-  "description": "claude-talk: speak the reply after each turn (mode from ~/.claude/channels/talk/config)",
+  "description": "claude-talk: speak each text block as it is written (before tool calls) and at the end of the turn",
   "hooks": {
+    "PreToolUse": [
+      { "hooks": [ { "type": "command", "command": "bun \"${CLAUDE_PLUGIN_ROOT}/bin/speak-last\"", "timeout": 10 } ] }
+    ],
     "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bun \"${CLAUDE_PLUGIN_ROOT}/bin/speak-last\"",
-            "timeout": 20
-          }
-        ]
-      }
+      { "hooks": [ { "type": "command", "command": "bun \"${CLAUDE_PLUGIN_ROOT}/bin/speak-last\"", "timeout": 10 } ] }
     ]
   }
 }

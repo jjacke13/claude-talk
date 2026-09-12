@@ -79,8 +79,10 @@ multilingual whisper model (`ggml-base.bin`, not `*.en.bin`) and a matching pipe
 
 `bin/talk` writes `~/.claude/channels/talk/inbox/<epoch-ms>.txt` atomically; the MCP
 server (`server.ts`) watches that directory and pushes each file as a channel
-notification. `hooks/hooks.json` registers `bin/speak-last` on `Stop`; it detaches
-`bin/say` so the hook returns instantly. The server polls the inbox every 500 ms
+notification. `hooks/hooks.json` registers `bin/speak-last` on `PreToolUse` and `Stop`: each run speaks
+the turn's text blocks not yet spoken (progress in `speak-progress`), so prose written before a
+tool call is heard while the tool runs; blocks queue in order (`say --after PID`), a new turn
+interrupts. The hook detaches `bin/say` so it returns instantly. The server polls the inbox every 500 ms
 (Bun's `fs.watch` dropped events after a few idle minutes). `mirror` mode keys off a
 marker file `bin/talk` writes (`~/.claude/channels/talk/spoken`), consumed per reply.
 

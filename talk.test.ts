@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { parseConfig, resolveConfig, sanitizeForSpeech, shouldSpeak, sortInbox, splitCmd, turnTexts } from './talk.ts'
+import { parseConfig, resolveConfig, sanitizeForSpeech, shouldSpeak, sortInbox, splitCmd, turnState, turnTexts } from './talk.ts'
 
 test('parseConfig: comments, quotes, export, last wins', () => {
   expect(parseConfig(['# c', '', 'TALK_LANG=el # greek', 'export TALK_SPEAK=on', 'TALK_VOICE="a # b"', 'TALK_LANG=fr', 'x=1'].join('\n')))
@@ -75,5 +75,6 @@ test('turnTexts: all assistant text since the last real user prompt; tool_result
     j({ type: 'assistant', message: { content: [{ type: 'text', text: 'Done.' }] } }),
   ].join('\n')
   expect(turnTexts(lines)).toEqual(['Fixing this.', 'Done.'])
+  expect(turnState(lines).key).toBe(2)
   expect(turnTexts('')).toEqual([])
 })
