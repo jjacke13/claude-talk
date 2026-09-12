@@ -11,6 +11,7 @@ const PROGRESS = join(STATE_DIR, 'speak-progress')   // "<turnKey> <blocksSpoken
 
 let input: any = {}
 try { input = JSON.parse(await new Response(Bun.stdin.stream()).text()) } catch {}
+log(`${input.hook_event_name ?? 'hook'} fired (transcript ${String(input.transcript_path).slice(-20)}, last_msg ${input.last_assistant_message ? 'yes' : 'no'})`)
 if (input.stop_hook_active) process.exit(0)
 
 const cfg = loadConfig()
@@ -22,7 +23,7 @@ try { state = turnState(readFileSync(String(input.transcript_path), 'utf8')) } c
 // hook's own copy of it when the transcript does not have it yet.
 const last = typeof input.last_assistant_message === 'string' ? input.last_assistant_message.trim() : ''
 if (last && !state.texts.some(t => t.trim() === last)) state.texts.push(last)
-if (!state.texts.length) process.exit(0)
+if (!state.texts.length) { log('no turn text found'); process.exit(0) }
 
 let [prevKey, prevCount, prevSpeak] = ['-1', '0', '']
 try { [prevKey, prevCount, prevSpeak] = readFileSync(PROGRESS, 'utf8').trim().split(' ') } catch {}
@@ -31,11 +32,11 @@ const sameTurn = prevKey === String(state.key)
 const speakThisTurn = sameTurn ? prevSpeak === '1' : shouldSpeak(cfg.TALK_SPEAK, takeSpoken())
 const done = sameTurn ? Number(prevCount) || 0 : 0
 writeFileSync(PROGRESS, `${state.key} ${state.texts.length} ${speakThisTurn ? 1 : 0}`)
-if (!speakThisTurn) process.exit(0)
+if (!speakThisTurn) { log('not speaking this turn'); process.exit(0) }
 
 const fresh = state.texts.slice(done).join('\n\n')
 const text = sanitizeForSpeech(fresh, Number(cfg.TALK_MAX_SPEAK_CHARS) || 1200)
-if (!text) process.exit(0)
+if (!text) { log(`nothing new (done ${done}/${state.texts.length})`); process.exit(0) }
 
 // Same turn → queue behind the current speech; new turn → cut it off.
 let after = ''

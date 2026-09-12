@@ -120,8 +120,10 @@ export function turnState(jsonl: string): { key: number; texts: string[] } {
     try { e = JSON.parse(line) } catch { continue }
     const c = e?.message?.content
     if (e?.type === 'user') {
-      // Tool results are user-typed entries too; only a real prompt (string or text block) resets.
-      if (typeof c === 'string' || (Array.isArray(c) && c.some((p: any) => p?.type === 'text'))) { texts = []; key = i }
+      // Tool results are user-typed entries too (and may carry extra text parts such as
+      // "file changed on disk" notes): only a message with NO tool_result is a real prompt.
+      const isPrompt = typeof c === 'string' || (Array.isArray(c) && !c.some((p: any) => p?.type === 'tool_result'))
+      if (isPrompt) { texts = []; key = i }
     } else if (e?.type === 'assistant' && Array.isArray(c)) {
       for (const p of c) if (p?.type === 'text' && typeof p.text === 'string' && p.text.trim()) texts.push(p.text)
     }

@@ -70,7 +70,7 @@ test('turnTexts: all assistant text since the last real user prompt; tool_result
     j({ type: 'assistant', message: { content: [{ type: 'text', text: 'old' }] } }),
     j({ type: 'user', message: { content: [{ type: 'text', text: 'second' }] } }),
     j({ type: 'assistant', message: { content: [{ type: 'text', text: 'Fixing this.' }, { type: 'tool_use', name: 'Bash' }] } }),
-    j({ type: 'user', message: { content: [{ type: 'tool_result', content: 'ok' }] } }),
+    j({ type: 'user', message: { content: [{ type: 'tool_result', content: 'ok' }, { type: 'text', text: 'Note: file changed on disk' }] } }),
     j({ type: 'assistant', message: { content: [{ type: 'thinking', thinking: 'x' }] } }),
     j({ type: 'assistant', message: { content: [{ type: 'text', text: 'Done.' }] } }),
   ].join('\n')
