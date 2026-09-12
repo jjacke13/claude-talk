@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { parseConfig, resolveConfig, sanitizeForSpeech, shouldSpeak, sortInbox, splitCmd, turnState, turnTexts } from './talk.ts'
+import { parseConfig, resolveConfig, sanitizeForSpeech, shouldSpeak, sortInbox, splitCmd, toolNarration, turnState, turnTexts } from './talk.ts'
 
 test('parseConfig: comments, quotes, export, last wins', () => {
   expect(parseConfig(['# c', '', 'TALK_LANG=el # greek', 'export TALK_SPEAK=on', 'TALK_VOICE="a # b"', 'TALK_LANG=fr', 'x=1'].join('\n')))
@@ -77,4 +77,12 @@ test('turnTexts: all assistant text since the last real user prompt; tool_result
   expect(turnTexts(lines)).toEqual(['Fixing this.', 'Done.'])
   expect(turnState(lines).key).toBe(2)
   expect(turnTexts('')).toEqual([])
+})
+
+test('toolNarration', () => {
+  expect(toolNarration('Bash', { command: 'ls', description: 'List files' })).toBe('List files')
+  expect(toolNarration('Read', { file_path: '/a/b/server.ts' })).toBe('reading server.ts')
+  expect(toolNarration('Edit', { file_path: '/a/talk.ts' })).toBe('editing talk.ts')
+  expect(toolNarration('Agent', { description: 'Review branch' })).toBe('dispatching an agent: Review branch')
+  expect(toolNarration('Weird', {})).toBe('')
 })

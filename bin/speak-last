@@ -5,7 +5,7 @@
 import { openSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { LOG_FILE, SAY_PID, STATE_DIR, loadConfig, log, takeSpoken } from '../voice.ts'
-import { sanitizeForSpeech, shouldSpeak, turnState } from '../talk.ts'
+import { sanitizeForSpeech, shouldSpeak, toolNarration, turnState } from '../talk.ts'
 
 const PROGRESS = join(STATE_DIR, 'speak-progress')   // "<turnKey> <blocksSpoken> <speakThisTurn>"
 
@@ -34,7 +34,10 @@ const done = sameTurn ? Number(prevCount) || 0 : 0
 writeFileSync(PROGRESS, `${state.key} ${state.texts.length} ${speakThisTurn ? 1 : 0}`)
 if (!speakThisTurn) { log('not speaking this turn'); process.exit(0) }
 
-const fresh = state.texts.slice(done).join('\n\n')
+// Claude Code appends most in-turn prose to the transcript only at turn end, so PreToolUse
+// narrates the tool call itself (Bash descriptions etc.); Stop speaks the prose.
+const narration = input.hook_event_name === 'PreToolUse' ? toolNarration(String(input.tool_name ?? ''), input.tool_input) : ''
+const fresh = [...state.texts.slice(done), narration].filter(Boolean).join('\n\n')
 const text = sanitizeForSpeech(fresh, Number(cfg.TALK_MAX_SPEAK_CHARS) || 1200)
 if (!text) { log(`nothing new (done ${done}/${state.texts.length})`); process.exit(0) }
 

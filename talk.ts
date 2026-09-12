@@ -130,3 +130,19 @@ export function turnState(jsonl: string): { key: number; texts: string[] } {
   }
   return { key, texts }
 }
+
+// What to say when a tool is about to run. Bash calls carry a human description; file tools
+// get a short verb + basename; anything else its name. Empty = say nothing.
+export function toolNarration(toolName: string, input: any): string {
+  const base = (p: unknown) => String(p ?? '').split('/').pop() ?? ''
+  const d = typeof input?.description === 'string' ? input.description.trim() : ''
+  switch (toolName) {
+    case 'Bash': return d
+    case 'Read': return `reading ${base(input?.file_path)}`
+    case 'Edit': case 'Write': case 'NotebookEdit': return `editing ${base(input?.file_path)}`
+    case 'Grep': case 'Glob': return 'searching'
+    case 'Agent': return d ? `dispatching an agent: ${d}` : 'dispatching an agent'
+    case 'WebFetch': case 'WebSearch': return 'looking that up'
+    default: return d
+  }
+}
