@@ -38,7 +38,8 @@ Keys and defaults:
 | `TALK_VOICE` | `~/.hermes/models/piper/en_GB-alan-medium.onnx` | piper voice (`.onnx` + sidecar `.onnx.json`) |
 | `TALK_SPEAK` | `mirror` | `mirror` = speak replies to spoken turns; `on` = every reply; `off` |
 | `TALK_PLAYER` | `pw-play` | raw s16 mono player command |
-| `TALK_KEY` | `KEY_RIGHTALT` | hold-to-talk key for `bin/talk-hold` (name or evdev code) |
+| `TALK_KEY` | `KEY_RIGHTALT` | hold-to-talk key (name or evdev code) |
+| `TALK_SPEED` | `1.0` | speech rate: 1.3 = faster, 0.8 = slower (0.5–3) |
 | `TALK_MAX_SPEAK_CHARS` | `1200` | cut longer replies at a sentence boundary |
 
 ---
@@ -55,7 +56,7 @@ Keys and defaults:
 
 ### `lang <code>` · `model <path>` · `voice <path>` · `speak mirror|on|off` · `player <cmd>` · `max <chars>`
 
-Set the matching key (`TALK_LANG`, `TALK_MODEL`, `TALK_VOICE`, `TALK_SPEAK`, `TALK_PLAYER`, `TALK_KEY`,
+Set the matching key (`TALK_LANG`, `TALK_MODEL`, `TALK_VOICE`, `TALK_SPEAK`, `TALK_PLAYER`, `TALK_KEY`, `TALK_SPEED`,
 `TALK_MAX_SPEAK_CHARS`). Keep other lines. Create the directory with `mkdir -p` if needed.
 For `model`/`voice`, `test -f` the path first and refuse with a clear message if absent
 (a non-English model needs a multilingual ggml, e.g. `ggml-base.bin`, not `*.en.bin`).

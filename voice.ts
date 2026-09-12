@@ -26,7 +26,7 @@ export function loadConfig(): Config {
 }
 
 export function requireFile(path: string, key: string): void {
-  if (!existsSync(path)) { log(`${key} not found: ${path} — set it with /talk:configure`); process.exit(1) }
+  if (!existsSync(path)) throw new Error(`${key} not found: ${path} — set it with /talk:configure`)
 }
 
 // piper voice sample rate from the sidecar json; 22050 is piper's usual medium-quality rate.
@@ -37,7 +37,9 @@ export function voiceRate(voice: string): number {
 // piper reads text on stdin, writes raw s16le mono on stdout.
 export function synth(cfg: Config, text: string) {
   requireFile(cfg.TALK_VOICE, 'TALK_VOICE')
-  return Bun.spawn(['piper', '--model', cfg.TALK_VOICE, '--output-raw'], { stdin: new Blob([text + '\n']), stdout: 'pipe', stderr: 'ignore' })
+  // TALK_SPEED 1.0 = the voice's natural rate; piper's length-scale is its inverse (0.5–3 clamp).
+  const speed = Math.min(3, Math.max(0.5, Number(cfg.TALK_SPEED) || 1))
+  return Bun.spawn(['piper', '--model', cfg.TALK_VOICE, '--output-raw', '--length-scale', String(1 / speed)], { stdin: new Blob([text + '\n']), stdout: 'pipe', stderr: 'ignore' })
 }
 
 // Speak now. Returns both children so a SIGTERM to the wrapper can cut the audio.
@@ -53,7 +55,7 @@ export async function renderOgg(cfg: Config, text: string, out: string): Promise
   const p = synth(cfg, text)
   const rate = String(voiceRate(cfg.TALK_VOICE))
   const ff = Bun.spawn(['ffmpeg', '-y', '-loglevel', 'error', '-f', 's16le', '-ar', rate, '-ac', '1', '-i', '-', '-c:a', 'libopus', out], { stdin: p.stdout, stdout: 'ignore', stderr: 'inherit' })
-  if (await ff.exited !== 0) { log('ffmpeg failed'); process.exit(1) }
+  if (await ff.exited !== 0) throw new Error('ffmpeg failed')
   const probe = Bun.spawn(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', out], { stdout: 'pipe' })
   return Math.round(Number((await new Response(probe.stdout).text()).trim())) || 0
 }
@@ -70,7 +72,7 @@ export async function transcribe(cfg: Config, wav: string): Promise<string> {
   requireFile(cfg.TALK_MODEL, 'TALK_MODEL')
   const w = Bun.spawn(['whisper-cli', '-m', cfg.TALK_MODEL, '-l', cfg.TALK_LANG, '-f', wav, '-nt', '-np'], { stdout: 'pipe', stderr: 'ignore' })
   const text = (await new Response(w.stdout).text()).replace(/\s+/g, ' ').trim()
-  if (await w.exited !== 0) { log('whisper-cli failed'); process.exit(1) }
+  if (await w.exited !== 0) throw new Error('whisper-cli failed')
   return text
 }
 

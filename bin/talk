@@ -24,7 +24,7 @@ if (!text) {
     : new Promise(r => process.stdin.once('data', r))
   await record(wav, stop)
   process.stderr.write('talk: transcribing…\n')
-  try { text = await transcribe(cfg, wav) } finally { try { unlinkSync(wav) } catch {} }
+  try { text = await transcribe(cfg, wav) } catch (e) { log(String((e as Error).message)); process.exit(1) } finally { try { unlinkSync(wav) } catch {} }
   if (!text || /^\[.*\]$/.test(text)) { log('(nothing heard)'); process.exit(0) }   // whisper emits e.g. "[BLANK_AUDIO]"
 }
 console.log(text)

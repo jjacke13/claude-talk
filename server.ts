@@ -10,12 +10,19 @@ import { mkdir, readFile, readdir, rename, unlink } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
 import { sortInbox } from './talk.ts'
+import { startHold } from './hold.ts'
+import { loadConfig } from './voice.ts'
 
 const STATE_DIR = process.env.TALK_STATE_DIR
   ?? join(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude'), 'channels', 'talk')
 const INBOX = join(STATE_DIR, 'inbox')
 const FAILED = join(INBOX, 'failed')
 const log = (line: string) => process.stderr.write(`talk: ${line}\n`)
+
+function notify(text: string): void {
+  mcp.notification({ method: 'notifications/claude/channel', params: { content: text, meta: { ts: new Date().toISOString() } } })
+    .catch(e => log(`failed to deliver to Claude: ${e}`))
+}
 
 const mcp = new Server(
   { name: 'talk', version: '0.1.0' },
@@ -48,15 +55,7 @@ async function consume(name: string): Promise<void> {
     }
     return
   }
-  if (!text) return
-  try {
-    await mcp.notification({
-      method: 'notifications/claude/channel',
-      params: { content: text, meta: { ts: new Date(Number(name.replace(/\.txt$/, '')) || Date.now()).toISOString() } },
-    })
-  } catch (e) {
-    log(`failed to deliver to Claude: ${e}`)
-  }
+  if (text) notify(text)
 }
 
 await mkdir(FAILED, { recursive: true })
@@ -69,6 +68,7 @@ async function sweep(): Promise<void> {
 }
 await sweep()
 const poller = setInterval(() => void sweep(), 500)
+startHold(loadConfig(), notify)   // hold TALK_KEY anywhere → transcript straight into the session
 log(`ready; inbox ${INBOX}`)
 
 let shuttingDown = false

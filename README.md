@@ -31,11 +31,12 @@ claude --plugin-dir ~/Desktop/repos/claude-talk --dangerously-load-development-c
 **Inside the session (no second terminal):** `/talk:listen` records 10 s (`/talk:listen 20`
 for longer), transcribes, and answers — spoken back in `mirror` mode.
 
-**Hold-to-talk from any window (recommended):** `bun ~/Desktop/repos/claude-talk/bin/talk-hold &`
-then hold **Right Alt** while speaking, release to send. Needs your user in the `input` group
-(NixOS: `users.users.<you>.extraGroups = [ "input" ];`, rebuild, re-login). `TALK_KEY` picks
-another key (`KEY_RIGHTCTRL`, `KEY_PAUSE`, `KEY_F12`, … or a numeric evdev code); taps under
-300 ms are ignored.
+**Hold-to-talk from any window (recommended):** hold **Right Alt** while speaking, release
+to send — the plugin's server listens to the keyboard as soon as the session starts, nothing
+else to run. Needs your user in the `input` group (NixOS: `users.users.<you>.extraGroups =
+[ "input" ];`, rebuild, re-login); without it the server logs one line and only the other
+input paths work. `/talk:configure key KEY_F12` picks another key (`KEY_RIGHTCTRL`, `KEY_PAUSE`,
+… or a numeric evdev code); taps under 300 ms are ignored. One session owns the key at a time.
 
 **From a second terminal:**
 
@@ -58,7 +59,7 @@ still being spoken.
 ## Configure
 
 `/talk:configure` — status; `lang el`, `model <ggml>`, `voice <onnx>`, `speak on|off|mirror`,
-`player <cmd>`, `max <chars>`; `voices` lists where to download more. Config lives in
+`player <cmd>`, `max <chars>`, `key <KEY_NAME>`, `speed <0.5-3>`; `voices` lists where to download more. Config lives in
 `~/.claude/channels/talk/config` (`KEY=value`; shell env overrides). Non-English needs a
 multilingual whisper model (`ggml-base.bin`, not `*.en.bin`) and a matching piper voice.
 
@@ -66,7 +67,6 @@ multilingual whisper model (`ggml-base.bin`, not `*.en.bin`) and a matching pipe
 
 | script | does |
 |---|---|
-| `bin/talk-hold` | global hold-to-talk daemon (evdev; `input` group) |
 | `bin/talk` | push-to-talk → inbox (`--print` = transcript only + marker, used by `/talk:listen`) |
 | `bin/say "text"` | speak now |
 | `bin/tts out.ogg "text"` | render ogg/opus + print duration — for SimpleX/Telegram voice bubbles |

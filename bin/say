@@ -1,9 +1,10 @@
 #!/usr/bin/env bun
 // say "text"  |  echo text | say     → speaks with the configured piper voice
-import { loadConfig, say } from '../voice.ts'
+import { loadConfig, log, say } from '../voice.ts'
 const text = (process.argv.slice(2).join(' ') || await new Response(Bun.stdin.stream()).text()).trim()
 if (!text) process.exit(0)
-const { piper, player } = say(loadConfig(), text)
+let piper, player
+try { ({ piper, player } = say(loadConfig(), text)) } catch (e) { log(String((e as Error).message)); process.exit(1) }
 // speak-last interrupts an older reply by SIGTERM-ing this wrapper: take the children down too.
 for (const s of ['SIGTERM', 'SIGINT'] as const) process.on(s, () => { piper.kill(); player.kill(); process.exit(0) })
 process.exit(await player.exited)
