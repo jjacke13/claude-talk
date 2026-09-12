@@ -1,6 +1,6 @@
 {
   "name": "talk",
   "description": "Local voice for Claude Code — push-to-talk via whisper.cpp into the session, replies spoken with piper. Configure with /talk:configure.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "keywords": ["voice", "whisper", "piper", "channel", "mcp"]
 }

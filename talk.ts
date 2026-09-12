@@ -67,7 +67,7 @@ export function sanitizeForSpeech(md: string, maxChars = 1200): string {
     .replace(/^\s*sources?:[\s\S]*$/im, " ")     // trailing "Sources:" section — never read aloud
     .replace(/^\s*[-*+]?\s*\[[^\]]+\]\([^)]*\)\s*$/gm, " ")   // lines that are only a link
     .replace(/```[\s\S]*?```/g, ' ')          // fenced code blocks
-    .replace(/`[^`\n]*`/g, ' ')                // inline code
+    .replace(/`([^`\n]*)`/g, (_, c) => c.length <= 30 ? ' ' + c.replace(/^-+/, '').replace(/[-_\/]+/g, ' ') + ' ' : ' ')   // short inline code → words (`--plugin-dir` → "plugin dir"); long spans dropped
     .replace(/^\s*\|.*\|\s*$/gm, ' ')          // table rows
     .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')     // images
     .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')   // links → label
@@ -81,6 +81,7 @@ export function sanitizeForSpeech(md: string, maxChars = 1200): string {
     .replace(/https?:\/\/\S+/g, 'link')        // bare URLs
     .replace(/(?<![\w\/~.])[A-Za-z][\w.-]*(?:\/[\w.-]+)+(?![\w\/])/g, m => m.split('/').pop()!)   // owner/repo, a/b/c → last segment
     .replace(/\s+/g, ' ')
+    .replace(/ +([.,;:!?])/g, '$1')           // no space before punctuation after a removal
     .trim()
   if (t.length > maxChars) {
     const cut = t.slice(0, maxChars)

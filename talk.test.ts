@@ -16,7 +16,7 @@ test('resolveConfig: defaults < file < env, ~ expanded', () => {
 
 test('sanitizeForSpeech: strips code/markdown, keeps prose', () => {
   const md = '# Title\n\nDone. Run `bun test` now.\n\n```ts\nconst x = 1\n```\n\n- **bold** item\n- see [docs](https://x.y/z)\n\n| a | b |\n|---|---|\n\n> quote\n\nMore at https://example.com ok.'
-  expect(sanitizeForSpeech(md)).toBe('Title Done. Run now. bold item see docs quote More at link ok.')
+  expect(sanitizeForSpeech(md)).toBe('Title Done. Run bun test now. bold item see docs quote More at link ok.')
 })
 
 test('sanitizeForSpeech: cuts long text at a sentence boundary', () => {
@@ -57,4 +57,8 @@ test('sanitizeForSpeech: drops Sources section and link-only lines', () => {
 
 test('sanitizeForSpeech: owner/repo and paths read as last segment; dates untouched', () => {
   expect(sanitizeForSpeech('See jcwatson11/claude-a2a and docs/superpowers/specs on 12/09.')).toBe('See claude-a2a and specs on 12/09.')
+})
+
+test('sanitizeForSpeech: short inline code spoken as words, long dropped', () => {
+  expect(sanitizeForSpeech('launch without `--plugin-dir` or run `claude plugin update talk@claude-talk` then `bun test`.')).toBe('launch without plugin dir or run then bun test.')
 })
