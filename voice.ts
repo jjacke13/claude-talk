@@ -93,3 +93,8 @@ export function takeSpoken(maxAgeMs = 10 * 60_000): boolean {
     return fresh
   } catch { return false }
 }
+
+// Start recording without waiting; caller kills with SIGINT (pw-record then finalizes the WAV).
+export function startRecording(wav: string) {
+  return Bun.spawn(['pw-record', '--rate', '16000', '--channels', '1', '--format', 's16', wav], { stdout: 'ignore', stderr: 'ignore' })
+}

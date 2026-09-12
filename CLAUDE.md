@@ -15,4 +15,6 @@ claude-simplex voice bubbles (not wired yet). Built 2026-09-12; **live test pend
 - Gotchas: **Bun `fs.watch` silently stops delivering after minutes idle → server POLLS (500 ms).**
   `pgrep -f` in checks matches the calling shell (+1). pw-record prints the wav
   path on stderr (harmless). `--seconds N` for hands-free stop; Enter otherwise.
+- Hold-to-talk: `bin/talk-hold` reads /dev/input evdev (24-byte input_event), needs `input` group;
+  Vaios must add it in my-nixos-config/modules/configuration.nix:294 extraGroups. Tested via FIFO fake device only.
 - Not done: Greek voice download, VAD, streaming (needs Agent SDK/hades), SimpleX wiring.

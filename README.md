@@ -31,7 +31,13 @@ claude --plugin-dir ~/Desktop/repos/claude-talk --dangerously-load-development-c
 **Inside the session (no second terminal):** `/talk:listen` records 10 s (`/talk:listen 20`
 for longer), transcribes, and answers — spoken back in `mirror` mode.
 
-**From a second terminal or a hotkey:**
+**Hold-to-talk from any window (recommended):** `bun ~/Desktop/repos/claude-talk/bin/talk-hold &`
+then hold **Right Alt** while speaking, release to send. Needs your user in the `input` group
+(NixOS: `users.users.<you>.extraGroups = [ "input" ];`, rebuild, re-login). `TALK_KEY` picks
+another key (`KEY_RIGHTCTRL`, `KEY_PAUSE`, `KEY_F12`, … or a numeric evdev code); taps under
+300 ms are ignored.
+
+**From a second terminal:**
 
 ```sh
 bun ~/Desktop/repos/claude-talk/bin/talk            # record until Enter, transcribe, send
@@ -60,6 +66,7 @@ multilingual whisper model (`ggml-base.bin`, not `*.en.bin`) and a matching pipe
 
 | script | does |
 |---|---|
+| `bin/talk-hold` | global hold-to-talk daemon (evdev; `input` group) |
 | `bin/talk` | push-to-talk → inbox (`--print` = transcript only + marker, used by `/talk:listen`) |
 | `bin/say "text"` | speak now |
 | `bin/tts out.ogg "text"` | render ogg/opus + print duration — for SimpleX/Telegram voice bubbles |

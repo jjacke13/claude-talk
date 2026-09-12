@@ -8,6 +8,7 @@ export const DEFAULTS = {
   TALK_SPEAK: 'mirror',
   TALK_PLAYER: 'pw-play',
   TALK_MAX_SPEAK_CHARS: '1200',
+  TALK_KEY: 'KEY_RIGHTALT',
 } as const
 export type ConfigKey = keyof typeof DEFAULTS
 export type Config = Record<ConfigKey, string>
