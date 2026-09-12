@@ -103,3 +103,22 @@ export function sortInbox(names: string[]): string[] {
   return names.filter(n => n.endsWith('.txt')).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
 }
 
+
+// Every assistant text block since the last user message, joined — so prose written before a
+// tool call is spoken too, not only the turn's final block (which is all the Stop hook gets).
+export function turnTexts(jsonl: string): string[] {
+  let texts: string[] = []
+  for (const line of jsonl.split('\n')) {
+    if (!line.startsWith('{')) continue
+    let e: any
+    try { e = JSON.parse(line) } catch { continue }
+    const c = e?.message?.content
+    if (e?.type === 'user') {
+      // Tool results are user-typed entries too; only a real prompt (string or text block) resets.
+      if (typeof c === 'string' || (Array.isArray(c) && c.some((p: any) => p?.type === 'text'))) texts = []
+    } else if (e?.type === 'assistant' && Array.isArray(c)) {
+      for (const p of c) if (p?.type === 'text' && typeof p.text === 'string' && p.text.trim()) texts.push(p.text)
+    }
+  }
+  return texts
+}

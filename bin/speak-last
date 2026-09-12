@@ -3,7 +3,7 @@
 // the hook returns immediately; a new reply interrupts a still-running one.
 import { openSync, readFileSync, writeFileSync } from 'fs'
 import { LOG_FILE, SAY_PID, loadConfig, takeSpoken } from '../voice.ts'
-import { sanitizeForSpeech, shouldSpeak } from '../talk.ts'
+import { sanitizeForSpeech, shouldSpeak, turnTexts } from '../talk.ts'
 
 let input: any = {}
 try { input = JSON.parse(await new Response(Bun.stdin.stream()).text()) } catch {}
@@ -14,7 +14,11 @@ if (cfg.TALK_SPEAK === 'off') process.exit(0)
 // mirror: the turn was spoken iff bin/talk left a fresh marker (consumed here, so one reply per utterance).
 if (!shouldSpeak(cfg.TALK_SPEAK, takeSpoken())) process.exit(0)
 
-const text = sanitizeForSpeech(String(input.last_assistant_message ?? ''), Number(cfg.TALK_MAX_SPEAK_CHARS) || 1200)
+// Whole turn, not just the final block: prose written before tool calls is spoken too.
+let turn = ''
+try { turn = turnTexts(readFileSync(String(input.transcript_path), 'utf8')).join('\n\n') } catch {}
+if (!turn) turn = String(input.last_assistant_message ?? '')
+const text = sanitizeForSpeech(turn, Number(cfg.TALK_MAX_SPEAK_CHARS) || 1200)
 if (!text) process.exit(0)
 
 try { process.kill(Number(readFileSync(SAY_PID, 'utf8')), 'SIGTERM') } catch {}   // interrupt previous speech

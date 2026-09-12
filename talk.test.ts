@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { parseConfig, resolveConfig, sanitizeForSpeech, shouldSpeak, sortInbox, splitCmd } from './talk.ts'
+import { parseConfig, resolveConfig, sanitizeForSpeech, shouldSpeak, sortInbox, splitCmd, turnTexts } from './talk.ts'
 
 test('parseConfig: comments, quotes, export, last wins', () => {
   expect(parseConfig(['# c', '', 'TALK_LANG=el # greek', 'export TALK_SPEAK=on', 'TALK_VOICE="a # b"', 'TALK_LANG=fr', 'x=1'].join('\n')))
@@ -61,4 +61,19 @@ test('sanitizeForSpeech: owner/repo and paths read as last segment; dates untouc
 
 test('sanitizeForSpeech: short inline code spoken as words, long dropped', () => {
   expect(sanitizeForSpeech('launch without `--plugin-dir` or run `claude plugin update talk@claude-talk` then `bun test`.')).toBe('launch without plugin dir or run then bun test.')
+})
+
+test('turnTexts: all assistant text since the last real user prompt; tool_result does not reset', () => {
+  const j = (o: unknown) => JSON.stringify(o)
+  const lines = [
+    j({ type: 'user', message: { content: 'first' } }),
+    j({ type: 'assistant', message: { content: [{ type: 'text', text: 'old' }] } }),
+    j({ type: 'user', message: { content: [{ type: 'text', text: 'second' }] } }),
+    j({ type: 'assistant', message: { content: [{ type: 'text', text: 'Fixing this.' }, { type: 'tool_use', name: 'Bash' }] } }),
+    j({ type: 'user', message: { content: [{ type: 'tool_result', content: 'ok' }] } }),
+    j({ type: 'assistant', message: { content: [{ type: 'thinking', thinking: 'x' }] } }),
+    j({ type: 'assistant', message: { content: [{ type: 'text', text: 'Done.' }] } }),
+  ].join('\n')
+  expect(turnTexts(lines)).toEqual(['Fixing this.', 'Done.'])
+  expect(turnTexts('')).toEqual([])
 })
