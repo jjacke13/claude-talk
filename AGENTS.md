@@ -132,3 +132,27 @@ the reply is spoken. Speech failures land in `~/.claude/channels/talk/talk.log`.
   Developing from a checkout? `--plugin-dir` overrides the install; `claude plugin disable talk@claude-talk`
   avoids a duplicate server.
 - Tests: `bun test` in the repo (pure helpers; no mic needed).
+
+## Windows quick path (UNTESTED as of 2026-09-12 — report the first error verbatim)
+
+PowerShell, as the user:
+
+```powershell
+winget install Oven-sh.Bun                       # bun
+winget install ChrisBagwell.SoX                  # rec / play (default mic + speakers)
+# whisper.cpp: download whisper-bin-x64.zip from https://github.com/ggml-org/whisper.cpp/releases
+# piper:       download piper_windows_amd64.zip  from https://github.com/rhasspy/piper/releases
+# unzip both into C:\tools\  and add C:\tools\whisper and C:\tools\piper to PATH (whisper-cli.exe, piper.exe)
+mkdir $HOME\.claude\channels\talk\models
+# put ggml-base.en.bin, <voice>.onnx and <voice>.onnx.json into that models folder
+@"
+TALK_MODEL=$HOME\.claude\channels\talk\models\ggml-base.en.bin
+TALK_VOICE=$HOME\.claude\channels\talk\models\en_US-lessac-medium.onnx
+"@ | Set-Content $HOME\.claude\channels\talk\config
+claude plugin marketplace add jjacke13/claude-talk
+claude plugin install talk@claude-talk
+claude --dangerously-load-development-channels plugin:talk@claude-talk
+```
+
+Check: `bun say.exe`-style paths are not needed — `bun <plugin-root>\bin\say hello` must be audible,
+then hold Right Alt and speak. No `input` group step on Windows.
