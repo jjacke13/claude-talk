@@ -24,6 +24,7 @@ export function defaultsFor(platform: string) {
     TALK_MAX_SPEAK_CHARS: '1200',
     TALK_KEY: 'KEY_RIGHTALT',
     TALK_SPEED: '1.0',
+  TALK_NARRATE: 'off',
     ...(AUDIO_DEFAULTS[platform] ?? AUDIO_DEFAULTS.other!),
   }
 }

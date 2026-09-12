@@ -1,57 +1,45 @@
 #!/usr/bin/env bun
-// PreToolUse + Stop hook: speak the assistant text blocks of the current turn that have not
-// been spoken yet, so prose written before a tool call is heard while the tool runs, not at
-// the end. Blocks queue behind whatever is still playing; a new turn interrupts.
-import { openSync, readFileSync, writeFileSync } from 'fs'
+// Stop hook (and PreToolUse when TALK_NARRATE=on): speak the turn's prose that has not been
+// spoken yet. Claude Code appends most in-turn prose to the transcript only at turn end, so
+// timely mid-turn speech comes from the `speak` MCP tool instead; whatever that tool already
+// said is skipped here. Blocks queue behind current speech; a new turn interrupts.
+import { readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
-import { LOG_FILE, SAY_PID, STATE_DIR, loadConfig, log, takeSpoken } from '../voice.ts'
+import { STATE_DIR, clearSpoken, enqueueSpeech, loadConfig, log, readSpoken, takeSpoken } from '../voice.ts'
 import { sanitizeForSpeech, shouldSpeak, toolNarration, turnState } from '../talk.ts'
 
 const PROGRESS = join(STATE_DIR, 'speak-progress')   // "<turnKey> <blocksSpoken> <speakThisTurn>"
 
 let input: any = {}
 try { input = JSON.parse(await new Response(Bun.stdin.stream()).text()) } catch {}
-log(`${input.hook_event_name ?? 'hook'} fired (transcript ${String(input.transcript_path).slice(-20)}, last_msg ${input.last_assistant_message ? 'yes' : 'no'})`)
 if (input.stop_hook_active) process.exit(0)
+const event = String(input.hook_event_name ?? 'hook')
 
 const cfg = loadConfig()
 if (cfg.TALK_SPEAK === 'off') process.exit(0)
+if (event === 'PreToolUse' && cfg.TALK_NARRATE !== 'on') process.exit(0)
 
 let state = { key: -1, texts: [] as string[] }
 try { state = turnState(readFileSync(String(input.transcript_path), 'utf8')) } catch {}
-// Stop can fire before the final assistant message is appended to the transcript: use the
-// hook's own copy of it when the transcript does not have it yet.
 const last = typeof input.last_assistant_message === 'string' ? input.last_assistant_message.trim() : ''
 if (last && !state.texts.some(t => t.trim() === last)) state.texts.push(last)
-if (!state.texts.length) { log('no turn text found'); process.exit(0) }
 
 let [prevKey, prevCount, prevSpeak] = ['-1', '0', '']
 try { [prevKey, prevCount, prevSpeak] = readFileSync(PROGRESS, 'utf8').trim().split(' ') } catch {}
 const sameTurn = prevKey === String(state.key)
-// Decide once per turn (the spoken marker is consumed on first read); remember the decision.
+if (!sameTurn) clearSpoken()
 const speakThisTurn = sameTurn ? prevSpeak === '1' : shouldSpeak(cfg.TALK_SPEAK, takeSpoken())
 const done = sameTurn ? Number(prevCount) || 0 : 0
 writeFileSync(PROGRESS, `${state.key} ${state.texts.length} ${speakThisTurn ? 1 : 0}`)
-if (!speakThisTurn) { log('not speaking this turn'); process.exit(0) }
+if (!speakThisTurn) process.exit(0)
 
-// Claude Code appends most in-turn prose to the transcript only at turn end, so PreToolUse
-// narrates the tool call itself (Bash descriptions etc.); Stop speaks the prose.
-const narration = input.hook_event_name === 'PreToolUse' ? toolNarration(String(input.tool_name ?? ''), input.tool_input) : ''
-const fresh = [...state.texts.slice(done), narration].filter(Boolean).join('\n\n')
-const text = sanitizeForSpeech(fresh, Number(cfg.TALK_MAX_SPEAK_CHARS) || 1200)
-if (!text) { log(`nothing new (done ${done}/${state.texts.length})`); process.exit(0) }
+const spoken = readSpoken()
+const max = Number(cfg.TALK_MAX_SPEAK_CHARS) || 1200
+const parts = state.texts.slice(done).map(t => sanitizeForSpeech(t, max)).filter(t => t && !spoken.has(t))
+if (event === 'PreToolUse') parts.push(sanitizeForSpeech(toolNarration(String(input.tool_name ?? ''), input.tool_input), max))
+const text = parts.filter(Boolean).join(' ')
+if (!text) process.exit(0)
 
-// Same turn → queue behind the current speech; new turn → cut it off.
-let after = ''
-try {
-  const pid = Number(readFileSync(SAY_PID, 'utf8'))
-  if (sameTurn) after = String(pid)
-  else process.kill(pid, 'SIGTERM')
-} catch {}
-const logFd = openSync(LOG_FILE, 'a')
-const args = ['bun', new URL('./say', import.meta.url).pathname, ...(after ? ['--after', after] : []), text]
-const p = Bun.spawn(args, { stdin: 'ignore', stdout: 'ignore', stderr: logFd })
-p.unref()
-writeFileSync(SAY_PID, String(p.pid))
-log(`${input.hook_event_name ?? 'hook'}: turn ${state.key} blocks ${done}→${state.texts.length}, say ${p.pid}${after ? ' after ' + after : ''}: "${text.slice(0, 50)}"`)
+const pid = enqueueSpeech(text, !sameTurn)
+log(`${event}: turn ${state.key} blocks ${done}→${state.texts.length}, say ${pid}: "${text.slice(0, 50)}"`)
 process.exit(0)

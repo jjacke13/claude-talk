@@ -1,7 +1,7 @@
 // Side-effecting voice plumbing shared by the bin/ scripts: config from disk+env, piper
 // synthesis (raw s16 mono at the voice's sample rate), playback, opus rendering, recording,
 // whisper transcription, and the inbox drop. Pure logic lives in talk.ts.
-import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs'
+import { appendFileSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { resolveConfig, splitCmd, type Config } from './talk.ts'
@@ -117,3 +117,25 @@ export async function stopRecording(rec: ReturnType<typeof startRecording>, wav:
   await rec.exited
   wrapWav(wav + '.raw', wav)
 }
+
+// Queue speech behind whatever `say` is still playing (or cut it off when interrupt=true).
+// Detached: the caller (a hook or the MCP server) never waits for the audio.
+export function enqueueSpeech(text: string, interrupt = false): number {
+  let after = ''
+  try {
+    const pid = Number(readFileSync(SAY_PID, 'utf8'))
+    if (interrupt) process.kill(pid, 'SIGTERM'); else after = String(pid)
+  } catch {}
+  const logFd = openSync(LOG_FILE, 'a')
+  const args = ['bun', new URL('./bin/say', import.meta.url).pathname, ...(after ? ['--after', after] : []), text]
+  const p = Bun.spawn(args, { stdin: 'ignore', stdout: 'ignore', stderr: logFd })
+  p.unref()
+  writeFileSync(SAY_PID, String(p.pid))
+  return p.pid
+}
+
+// Texts spoken via the `speak` tool this turn, so the Stop hook does not read them again.
+export const SPOKEN_LOG = join(STATE_DIR, 'spoken.log')
+export function noteSpoken(text: string): void { try { appendFileSync(SPOKEN_LOG, text.replace(/\s+/g, ' ').trim() + '\n') } catch {} }
+export function readSpoken(): Set<string> { try { return new Set(readFileSync(SPOKEN_LOG, 'utf8').split('\n').filter(Boolean)) } catch { return new Set() } }
+export function clearSpoken(): void { try { unlinkSync(SPOKEN_LOG) } catch {} }
