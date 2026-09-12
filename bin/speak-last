@@ -1,0 +1,27 @@
+#!/usr/bin/env bun
+// Stop hook: speak the reply that just finished, per TALK_SPEAK. Detaches the player so
+// the hook returns immediately; a new reply interrupts a still-running one.
+import { readFileSync, writeFileSync } from 'fs'
+import { SAY_PID, loadConfig, log } from '../voice.ts'
+import { lastUserText, sanitizeForSpeech, shouldSpeak } from '../talk.ts'
+
+let input: any = {}
+try { input = JSON.parse(await new Response(Bun.stdin.stream()).text()) } catch {}
+if (input.stop_hook_active) process.exit(0)
+
+const cfg = loadConfig()
+if (cfg.TALK_SPEAK === 'off') process.exit(0)
+let lastUser = ''
+if (cfg.TALK_SPEAK === 'mirror') {
+  try { lastUser = lastUserText(readFileSync(String(input.transcript_path), 'utf8')) } catch {}
+}
+if (!shouldSpeak(cfg.TALK_SPEAK, lastUser)) process.exit(0)
+
+const text = sanitizeForSpeech(String(input.last_assistant_message ?? ''), Number(cfg.TALK_MAX_SPEAK_CHARS) || 1200)
+if (!text) process.exit(0)
+
+try { process.kill(Number(readFileSync(SAY_PID, 'utf8')), 'SIGTERM') } catch {}   // interrupt previous speech
+const p = Bun.spawn(['bun', new URL('./say', import.meta.url).pathname, text], { stdin: 'ignore', stdout: 'ignore', stderr: 'ignore' })
+p.unref()
+writeFileSync(SAY_PID, String(p.pid))
+process.exit(0)

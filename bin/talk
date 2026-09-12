@@ -1,0 +1,31 @@
+#!/usr/bin/env bun
+// talk              → record until Enter, transcribe locally, drop into the session
+// talk --seconds N  → auto-stop after N seconds
+// talk "text"       → skip the mic, drop the text as if spoken (test path)
+import { unlinkSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
+import { INBOX, drop, loadConfig, log, record, transcribe } from '../voice.ts'
+
+const args = process.argv.slice(2)
+const secIdx = args.indexOf('--seconds')
+const seconds = secIdx >= 0 ? Number(args[secIdx + 1]) : 0
+const typed = args.filter((_, i) => secIdx < 0 || (i !== secIdx && i !== secIdx + 1)).join(' ').trim()
+
+let text = typed
+if (!text) {
+  const cfg = loadConfig()
+  const wav = join(tmpdir(), `talk-${process.pid}.wav`)
+  process.stderr.write(seconds > 0 ? `talk: recording ${seconds}s…\n` : 'talk: recording… press Enter to stop\n')
+  const stop = seconds > 0
+    ? new Promise(r => setTimeout(r, seconds * 1000))
+    : new Promise(r => process.stdin.once('data', r))
+  await record(wav, stop)
+  process.stderr.write('talk: transcribing…\n')
+  try { text = await transcribe(cfg, wav) } finally { try { unlinkSync(wav) } catch {} }
+  if (!text || /^\[.*\]$/.test(text)) { log('(nothing heard)'); process.exit(0) }   // whisper emits e.g. "[BLANK_AUDIO]"
+}
+console.log(text)
+drop(text)
+log(`dropped into ${INBOX}`)
+process.exit(0)

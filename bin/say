@@ -1,0 +1,6 @@
+#!/usr/bin/env bun
+// say "text"  |  echo text | say     → speaks with the configured piper voice
+import { loadConfig, say } from '../voice.ts'
+const text = (process.argv.slice(2).join(' ') || await new Response(Bun.stdin.stream()).text()).trim()
+if (!text) process.exit(0)
+process.exit(await say(loadConfig(), text).exited)

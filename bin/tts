@@ -1,0 +1,8 @@
+#!/usr/bin/env bun
+// tts <out.ogg> "text"  |  echo text | tts <out.ogg>   → ogg/opus file; prints duration (s)
+import { loadConfig, renderOgg } from '../voice.ts'
+const [out, ...rest] = process.argv.slice(2)
+if (!out) { process.stderr.write('usage: tts <out.ogg> [text]\n'); process.exit(2) }
+const text = (rest.join(' ') || await new Response(Bun.stdin.stream()).text()).trim()
+if (!text) process.exit(0)
+console.log(await renderOgg(loadConfig(), text, out))
