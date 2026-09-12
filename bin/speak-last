@@ -41,6 +41,6 @@ const text = parts.filter(Boolean).join(" ")
 if (event === "Stop") clearSpoken()   // turn is over: forget what the speak tool said
 if (!text) process.exit(0)
 
-const pid = enqueueSpeech(text, !sameTurn)
+const pid = enqueueSpeech(text)   // always queue; pressing the talk key is what interrupts (hold.ts)
 log(`${event}: turn ${state.key} blocks ${done}→${state.texts.length}, say ${pid}: "${text.slice(0, 50)}"`)
 process.exit(0)

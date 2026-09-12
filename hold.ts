@@ -4,7 +4,8 @@
 import { createReadStream, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { STATE_DIR, log, markSpoken, startRecording, stopRecording, transcribe, type Config } from './voice.ts'
+import { SAY_PID, STATE_DIR, log, markSpoken, startRecording, stopRecording, transcribe, type Config } from './voice.ts'
+import { readFileSync as readSync } from 'fs'
 
 export const KEYS: Record<string, number> = {
   KEY_RIGHTALT: 100, KEY_LEFTALT: 56, KEY_RIGHTCTRL: 97, KEY_LEFTCTRL: 29, KEY_RIGHTMETA: 126,
@@ -52,6 +53,7 @@ export function startHold(cfg: Config, onText: (text: string) => void, devices?:
   let wav = '', t0 = 0, busy = false
   async function onKey(value: number): Promise<void> {
     if (value === PRESS && !rec && !busy) {
+      try { process.kill(Number(readSync(SAY_PID, 'utf8')), 'SIGTERM') } catch {}   // stop talking, the user is
       wav = join(tmpdir(), `talk-hold-${process.pid}.wav`)
       rec = startRecording(cfg, wav); t0 = Date.now()
       log('recording… (release to send)')
