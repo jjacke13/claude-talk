@@ -22,10 +22,10 @@ if (!text) {
   const stop = seconds > 0
     ? new Promise(r => setTimeout(r, seconds * 1000))
     : new Promise(r => process.stdin.once('data', r))
-  await record(wav, stop)
+  await record(cfg, wav, stop)
   process.stderr.write('talk: transcribing…\n')
-  try { text = await transcribe(cfg, wav) } catch (e) { log(String((e as Error).message)); process.exit(1) } finally { try { unlinkSync(wav) } catch {} }
-  if (!text || /^\[.*\]$/.test(text)) { log('(nothing heard)'); process.exit(0) }   // whisper emits e.g. "[BLANK_AUDIO]"
+  try { text = await transcribe(cfg, wav) } catch (e) { log(String((e as Error).message)); process.exit(1) } finally { for (const f of [wav, wav + '.raw']) try { unlinkSync(f) } catch {} }
+  if (!text || /^[\[(].*[\])]$/.test(text)) { log("(nothing heard)"); process.exit(0) }   // whisper emits "[BLANK_AUDIO]" / "(crickets chirping)" on silence
 }
 console.log(text)
 markSpoken()                       // the Stop hook mirrors modality off this marker

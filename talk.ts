@@ -1,18 +1,40 @@
 // Pure helpers for claude-talk: config parsing, speech sanitizing, speak decision, inbox order.
 // No env, no process, no MCP — everything here is unit-tested in talk.test.ts.
 
-export const DEFAULTS = {
-  TALK_LANG: 'en',
-  TALK_MODEL: '~/.hermes/models/ggml-base.en.bin',
-  TALK_VOICE: '~/.hermes/models/piper/en_GB-alan-medium.onnx',
-  TALK_SPEAK: 'mirror',
-  TALK_PLAYER: 'pw-play',
-  TALK_MAX_SPEAK_CHARS: '1200',
-  TALK_KEY: 'KEY_RIGHTALT',
-  TALK_SPEED: '1.0',
-} as const
+// Player and recorder are argv templates (whitespace-split, no shell). Placeholders: {rate} = the
+// voice sample rate (player gets raw s16le mono on stdin), {raw} = output path for raw s16le 16 kHz
+// mono (we add the WAV header ourselves, so killing the recorder mid-stream is always safe).
+export const AUDIO_DEFAULTS: Record<string, { TALK_PLAYER: string; TALK_RECORDER: string }> = {
+  linux: {
+    TALK_PLAYER: 'pw-play --raw --rate {rate} --channels 1 --format s16 -',
+    TALK_RECORDER: 'pw-record --raw --rate 16000 --channels 1 --format s16 {raw}',
+  },
+  // SoX is the cross-platform fallback (default device on Windows/macOS). UNTESTED on Windows.
+  other: {
+    TALK_PLAYER: 'play -q -t raw -r {rate} -e signed -b 16 -c 1 -',
+    TALK_RECORDER: 'rec -q -t raw -r 16000 -e signed -b 16 -c 1 {raw}',
+  },
+}
+export function defaultsFor(platform: string) {
+  return {
+    TALK_LANG: 'en',
+    TALK_MODEL: '~/.hermes/models/ggml-base.en.bin',
+    TALK_VOICE: '~/.hermes/models/piper/en_GB-alan-medium.onnx',
+    TALK_SPEAK: 'mirror',
+    TALK_MAX_SPEAK_CHARS: '1200',
+    TALK_KEY: 'KEY_RIGHTALT',
+    TALK_SPEED: '1.0',
+    ...(AUDIO_DEFAULTS[platform] ?? AUDIO_DEFAULTS.other!),
+  }
+}
+export const DEFAULTS = defaultsFor('linux')
 export type ConfigKey = keyof typeof DEFAULTS
 export type Config = Record<ConfigKey, string>
+
+// Expand an argv template: whitespace split, {name} substitution. No shell, no quoting rules.
+export function splitCmd(template: string, vars: Record<string, string>): string[] {
+  return template.trim().split(/\s+/).map(a => a.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? ''))
+}
 
 // KEY=value lines. Blank and #-comment lines ignored; optional `export `; quoted values
 // verbatim; unquoted values lose a trailing whitespace-preceded `# comment`. Last key wins.
@@ -28,10 +50,10 @@ export function parseConfig(text: string): Record<string, string> {
 }
 
 // Defaults ← config file ← real environment (env wins). `~/` expanded with `home`.
-export function resolveConfig(fileText: string, env: Record<string, string | undefined>, home: string): Config {
+export function resolveConfig(fileText: string, env: Record<string, string | undefined>, home: string, platform = 'linux'): Config {
   const file = parseConfig(fileText)
-  const cfg = { ...DEFAULTS } as Config
-  for (const k of Object.keys(DEFAULTS) as ConfigKey[]) {
+  const cfg = defaultsFor(platform) as Config
+  for (const k of Object.keys(cfg) as ConfigKey[]) {
     const v = env[k] ?? file[k]
     if (v !== undefined && v !== '') cfg[k] = v
     cfg[k] = cfg[k].replace(/^~(?=\/|$)/, home)

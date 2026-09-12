@@ -4,7 +4,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
-import { resolveConfig, type Config } from './talk.ts'
+import { resolveConfig, splitCmd, type Config } from './talk.ts'
 
 export const STATE_DIR = process.env.TALK_STATE_DIR
   ?? join(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude'), 'channels', 'talk')
@@ -22,7 +22,7 @@ export const log = (line: string) => {
 
 export function loadConfig(): Config {
   const text = existsSync(CONFIG_FILE) ? readFileSync(CONFIG_FILE, 'utf8') : ''
-  return resolveConfig(text, process.env, homedir())
+  return resolveConfig(text, process.env, homedir(), process.platform)
 }
 
 export function requireFile(path: string, key: string): void {
@@ -46,7 +46,7 @@ export function synth(cfg: Config, text: string) {
 export function say(cfg: Config, text: string) {
   const piper = synth(cfg, text)
   const rate = String(voiceRate(cfg.TALK_VOICE))
-  const player = Bun.spawn([cfg.TALK_PLAYER, '--raw', '--rate', rate, '--channels', '1', '--format', 's16', '-'], { stdin: piper.stdout, stdout: 'ignore', stderr: 'ignore' })
+  const player = Bun.spawn(splitCmd(cfg.TALK_PLAYER, { rate }), { stdin: piper.stdout, stdout: 'ignore', stderr: 'ignore' })
   return { piper, player }
 }
 
@@ -60,12 +60,24 @@ export async function renderOgg(cfg: Config, text: string, out: string): Promise
   return Math.round(Number((await new Response(probe.stdout).text()).trim())) || 0
 }
 
-// Record 16 kHz mono WAV until `stop` resolves (Enter pressed or timer).
-export async function record(wav: string, stop: Promise<unknown>): Promise<void> {
-  const rec = Bun.spawn(['pw-record', '--rate', '16000', '--channels', '1', '--format', 's16', wav], { stdout: 'ignore', stderr: 'inherit' })
+// Record raw s16le 16 kHz mono until `stop` resolves (Enter pressed or timer), then wrap as WAV.
+export async function record(cfg: Config, wav: string, stop: Promise<unknown>): Promise<void> {
+  const rec = startRecording(cfg, wav)
   await stop
-  rec.kill('SIGINT')
-  await rec.exited
+  await stopRecording(rec, wav)
+}
+
+// Raw → WAV: 44-byte RIFF header. Killing the recorder at any moment leaves a valid raw stream,
+// which is why we never let the recorder write the container itself.
+export function wrapWav(raw: string, wav: string, rate = 16000): void {
+  const pcm = readFileSync(raw)
+  const h = Buffer.alloc(44)
+  h.write('RIFF', 0); h.writeUInt32LE(36 + pcm.length, 4); h.write('WAVE', 8)
+  h.write('fmt ', 12); h.writeUInt32LE(16, 16); h.writeUInt16LE(1, 20); h.writeUInt16LE(1, 22)
+  h.writeUInt32LE(rate, 24); h.writeUInt32LE(rate * 2, 28); h.writeUInt16LE(2, 32); h.writeUInt16LE(16, 34)
+  h.write('data', 36); h.writeUInt32LE(pcm.length, 40)
+  writeFileSync(wav, Buffer.concat([h, pcm]))
+  try { unlinkSync(raw) } catch {}
 }
 
 export async function transcribe(cfg: Config, wav: string): Promise<string> {
@@ -96,7 +108,12 @@ export function takeSpoken(maxAgeMs = 10 * 60_000): boolean {
   } catch { return false }
 }
 
-// Start recording without waiting; caller kills with SIGINT (pw-record then finalizes the WAV).
-export function startRecording(wav: string) {
-  return Bun.spawn(['pw-record', '--rate', '16000', '--channels', '1', '--format', 's16', wav], { stdout: 'ignore', stderr: 'ignore' })
+// Start the recorder writing raw PCM to `<wav>.raw`; stopRecording() kills it and wraps the WAV.
+export function startRecording(cfg: Config, wav: string) {
+  return Bun.spawn(splitCmd(cfg.TALK_RECORDER, { raw: wav + '.raw' }), { stdin: 'ignore', stdout: 'ignore', stderr: 'ignore' })
+}
+export async function stopRecording(rec: ReturnType<typeof startRecording>, wav: string): Promise<void> {
+  rec.kill(process.platform === 'win32' ? undefined : 'SIGINT')
+  await rec.exited
+  wrapWav(wav + '.raw', wav)
 }

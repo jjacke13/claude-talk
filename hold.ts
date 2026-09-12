@@ -4,12 +4,18 @@
 import { createReadStream, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { STATE_DIR, log, markSpoken, startRecording, transcribe, type Config } from './voice.ts'
+import { STATE_DIR, log, markSpoken, startRecording, stopRecording, transcribe, type Config } from './voice.ts'
 
 export const KEYS: Record<string, number> = {
   KEY_RIGHTALT: 100, KEY_LEFTALT: 56, KEY_RIGHTCTRL: 97, KEY_LEFTCTRL: 29, KEY_RIGHTMETA: 126,
   KEY_LEFTMETA: 125, KEY_CAPSLOCK: 58, KEY_SCROLLLOCK: 70, KEY_PAUSE: 119, KEY_MENU: 139,
   KEY_F9: 67, KEY_F10: 68, KEY_F11: 87, KEY_F12: 88,
+}
+// Windows virtual-key codes for the same names (GetAsyncKeyState). UNTESTED — no Windows box yet.
+export const VKEYS: Record<string, number> = {
+  KEY_RIGHTALT: 0xa5, KEY_LEFTALT: 0xa4, KEY_RIGHTCTRL: 0xa3, KEY_LEFTCTRL: 0xa2, KEY_RIGHTMETA: 0x5c,
+  KEY_LEFTMETA: 0x5b, KEY_CAPSLOCK: 0x14, KEY_SCROLLLOCK: 0x91, KEY_PAUSE: 0x13, KEY_MENU: 0x5d,
+  KEY_F9: 0x78, KEY_F10: 0x79, KEY_F11: 0x7a, KEY_F12: 0x7b,
 }
 const EV_KEY = 1, PRESS = 1, RELEASE = 0, MIN_HOLD_MS = 300
 const LOCK = join(STATE_DIR, 'hold.lock')
@@ -33,11 +39,13 @@ function takeLock(): boolean {
   return true
 }
 
-export function startHold(cfg: Config, onText: (text: string) => void, devices = keyboardDevices()): void {
+export function startHold(cfg: Config, onText: (text: string) => void, devices?: string[]): void {
   const keyName = cfg.TALK_KEY
-  const keyCode = KEYS[keyName] ?? Number(keyName)
+  const win = process.platform === 'win32'
+  const keyCode = (win ? VKEYS[keyName] : KEYS[keyName]) ?? Number(keyName)
   if (!Number.isInteger(keyCode)) { log(`TALK_KEY "${keyName}" unknown — hold-to-talk off`); return }
-  if (!devices.length) { log('hold-to-talk off: no keyboard under /dev/input'); return }
+  devices ??= win ? [] : keyboardDevices()
+  if (!win && !devices.length) { log('hold-to-talk off: no keyboard under /dev/input'); return }
   if (!takeLock()) { log('hold-to-talk off: another talk server owns the key'); return }
 
   let rec: ReturnType<typeof startRecording> | undefined
@@ -45,24 +53,26 @@ export function startHold(cfg: Config, onText: (text: string) => void, devices =
   async function onKey(value: number): Promise<void> {
     if (value === PRESS && !rec && !busy) {
       wav = join(tmpdir(), `talk-hold-${process.pid}.wav`)
-      rec = startRecording(wav); t0 = Date.now()
+      rec = startRecording(cfg, wav); t0 = Date.now()
       log('recording… (release to send)')
       return
     }
     if (value === RELEASE && rec) {
       const r = rec; rec = undefined; busy = true
-      r.kill('SIGINT'); await r.exited
+      await stopRecording(r, wav)
       try {
         if (Date.now() - t0 < MIN_HOLD_MS) return
         const text = await transcribe(cfg, wav)
-        if (!text || /^\[.*\]$/.test(text)) { log('(nothing heard)'); return }
+        if (!text || /^[\[(].*[\])]$/.test(text)) { log("(nothing heard)"); return }
         log(`heard: ${text}`)
         markSpoken()
         onText(text)
       } catch (e) { log(`transcription failed: ${e}`) }
-      finally { try { unlinkSync(wav) } catch {}; busy = false }
+      finally { for (const f of [wav, wav + '.raw']) try { unlinkSync(f) } catch {}; busy = false }
     }
   }
+
+  if (win) { pollWindowsKey(keyCode, keyName, onKey); return }
 
   // struct input_event on 64-bit: u64 sec, u64 usec, u16 type, u16 code, s32 value = 24 bytes.
   let opened = 0
@@ -80,4 +90,21 @@ export function startHold(cfg: Config, onText: (text: string) => void, devices =
     })
     s.on('error', e => log(`hold-to-talk off for ${path}: ${(e as Error).message} — add your user to the \`input\` group`))
   }
+}
+
+// Windows: no evdev; poll GetAsyncKeyState every 20 ms via bun:ffi (bit 15 = currently down).
+// Global like evdev, no group membership needed. UNTESTED — written before a Windows box existed.
+function pollWindowsKey(vk: number, keyName: string, onKey: (value: number) => void): void {
+  let user32: any
+  try {
+    // Dynamic import keeps Linux free of the module; bun:ffi resolves at runtime only on win32.
+    const ffi = require('bun:ffi')
+    user32 = ffi.dlopen('user32.dll', { GetAsyncKeyState: { args: ['int'], returns: 'i16' } }).symbols
+  } catch (e) { log(`hold-to-talk off: cannot load user32.dll (${e})`); return }
+  let down = false
+  setInterval(() => {
+    const now = (user32.GetAsyncKeyState(vk) & 0x8000) !== 0
+    if (now !== down) { down = now; onKey(now ? PRESS : RELEASE) }
+  }, 20)
+  log(`hold ${keyName} to talk`)
 }

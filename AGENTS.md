@@ -23,7 +23,12 @@ which ffmpeg                                   # only for bin/tts (voice files),
 
 - Missing binaries: NixOS/Nix → `nix develop /abs/path/claude-talk` gives `bun whisper-cpp piper-tts ffmpeg`
   (PipeWire tools come from the host). Debian/Ubuntu: `apt install pipewire-audio-client-libraries`
-  (or `pipewire-bin`), whisper.cpp and piper from their releases. macOS is not supported (PipeWire).
+  (or `pipewire-bin`), whisper.cpp and piper from their releases.
+- **Windows / macOS (UNTESTED as of 2026-09-12):** install SoX (`sox`, provides `rec`/`play`) plus the
+  whisper.cpp and piper Windows/macOS releases; put all on PATH. Audio then uses the SoX defaults
+  automatically (no config needed). Hold-to-talk on Windows polls `user32.dll GetAsyncKeyState`
+  — no group membership; step 2 is Linux-only. On macOS hold-to-talk is not implemented (use
+  `/talk:listen`). Expect rough edges; report the first error verbatim.
 - Models (files, not packages):
   - whisper ggml: https://huggingface.co/ggerganov/whisper.cpp/tree/main — English: `ggml-base.en.bin`;
     other languages: multilingual `ggml-base.bin` or `ggml-small.bin`.
@@ -70,7 +75,8 @@ moves the directory). Write it directly or, inside a session, use `/talk:configu
 | `speak mirror\|on\|off` | `TALK_SPEAK` | `mirror` | mirror = speak only replies to spoken turns |
 | `speed <0.5-3>` | `TALK_SPEED` | `1.0` | 1.3 faster, 0.8 slower |
 | `key <KEY_NAME>` | `TALK_KEY` | `KEY_RIGHTALT` | `KEY_RIGHTCTRL`, `KEY_PAUSE`, `KEY_F12`, or evdev code |
-| `player <cmd>` | `TALK_PLAYER` | `pw-play` | raw s16 mono player |
+| `player <cmd>` | `TALK_PLAYER` | PipeWire on Linux, SoX `play` elsewhere | argv template, `{rate}` placeholder, raw s16 mono on stdin |
+| `recorder <cmd>` | `TALK_RECORDER` | PipeWire on Linux, SoX `rec` elsewhere | argv template, must write raw s16le 16 kHz mono to `{raw}` |
 | `max <chars>` | `TALK_MAX_SPEAK_CHARS` | `1200` | sentence-boundary cut for long replies |
 
 Example, English defaults with models elsewhere:

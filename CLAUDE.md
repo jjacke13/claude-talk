@@ -20,4 +20,8 @@ claude-simplex voice bubbles (not wired yet). Built + **LIVE-VALIDATED 2026-09-1
 - Hold-to-talk lives IN the server (`hold.ts`, evdev 24-byte input_event, `hold.lock` = one session owns the key);
   needs `input` group — Vaios adds it in my-nixos-config/modules/configuration.nix:294 extraGroups. Tested via FIFO fake device only.
 - `TALK_SPEED` → piper `--length-scale 1/speed`.
+- Portability (2026-09-12, for Vaios's upcoming Windows box): player/recorder are argv TEMPLATES
+  (`{rate}`, `{raw}`), defaults PipeWire on linux / SoX elsewhere; recorder writes RAW, we add the
+  WAV header (`wrapWav`) so killing it is always safe; win32 hold = `bun:ffi` GetAsyncKeyState poll
+  (`VKEYS`). **All non-Linux paths UNTESTED** — first thing to validate on the Windows machine.
 - Not done: Greek voice download, VAD, streaming (needs Agent SDK/hades), SimpleX wiring.

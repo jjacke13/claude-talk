@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { parseConfig, resolveConfig, sanitizeForSpeech, shouldSpeak, sortInbox } from './talk.ts'
+import { parseConfig, resolveConfig, sanitizeForSpeech, shouldSpeak, sortInbox, splitCmd } from './talk.ts'
 
 test('parseConfig: comments, quotes, export, last wins', () => {
   expect(parseConfig(['# c', '', 'TALK_LANG=el # greek', 'export TALK_SPEAK=on', 'TALK_VOICE="a # b"', 'TALK_LANG=fr', 'x=1'].join('\n')))
@@ -41,4 +41,11 @@ test('sanitizeForSpeech: keeps snake_case, strips _emphasis_, quoted heading, lo
   expect(sanitizeForSpeech('Set TALK_SPEAK in my_var; this is _important_ and **bold**.')).toBe('Set TALK_SPEAK in my_var; this is important and bold.')
   expect(sanitizeForSpeech('> # Title\n\n1. first\n2. second')).toBe('Title first second')
   expect(sanitizeForSpeech('Look in ~/.hermes/models ~ ok')).toBe('Look in /.hermes/models ok')
+})
+
+test('platform audio defaults + splitCmd', () => {
+  expect(resolveConfig('', {}, '/h', 'linux').TALK_RECORDER).toContain('pw-record')
+  expect(resolveConfig('', {}, '/h', 'win32').TALK_PLAYER).toContain('play')
+  expect(resolveConfig('TALK_PLAYER=ffplay -i pipe:0 -ar {rate}', {}, '/h', 'win32').TALK_PLAYER).toBe('ffplay -i pipe:0 -ar {rate}')
+  expect(splitCmd(' pw-play  --rate {rate} {raw} - ', { rate: '22050', raw: '/t/x.raw' })).toEqual(['pw-play', '--rate', '22050', '/t/x.raw', '-'])
 })
