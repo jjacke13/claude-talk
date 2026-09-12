@@ -20,6 +20,11 @@ claude-simplex voice bubbles (not wired yet). Built + **LIVE-VALIDATED 2026-09-1
 - Hold-to-talk lives IN the server (`hold.ts`, evdev 24-byte input_event, `hold.lock` = one session owns the key);
   needs `input` group — Vaios adds it in my-nixos-config/modules/configuration.nix:294 extraGroups. Tested via FIFO fake device only.
 - `TALK_SPEED` → piper `--length-scale 1/speed`.
+- **Claude Code transcript lag (2.1.257):** in-turn assistant text after a thinking block is appended
+  to the JSONL only at turn end (first block of a turn is immediate). So PreToolUse cannot read my
+  prose → it narrates the TOOL CALL (`toolNarration`: Bash description, "reading X", …); Stop speaks
+  the prose via `turnState` + `last_assistant_message` fallback. Tool results can carry text parts
+  ("file changed on disk") — only messages WITHOUT tool_result reset the turn.
 - Portability (2026-09-12, for Vaios's upcoming Windows box): player/recorder are argv TEMPLATES
   (`{rate}`, `{raw}`), defaults PipeWire on linux / SoX elsewhere; recorder writes RAW, we add the
   WAV header (`wrapWav`) so killing it is always safe; win32 hold = `bun:ffi` GetAsyncKeyState poll
