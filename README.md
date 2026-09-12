@@ -36,7 +36,7 @@ bun ~/Desktop/repos/claude-talk/bin/talk --seconds 5
 bun ~/Desktop/repos/claude-talk/bin/talk "typed text"   # skip the mic
 ```
 
-The text appears in the session as `<channel source="talk" ts="…">` and Claude answers
+The text appears in the session as `<channel source="plugin:talk:talk" ts="…">` and Claude answers
 as usual. The reply is spoken according to `TALK_SPEAK`:
 
 - `mirror` (default) — spoken only when the turn came from `talk`

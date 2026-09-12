@@ -48,3 +48,9 @@ test('lastUserText: string and array content, tool_result ignored', () => {
   expect(lastUserText(lines)).toContain(CHANNEL_TAG)
   expect(lastUserText('')).toBe('')
 })
+
+test('sanitizeForSpeech: keeps snake_case, strips _emphasis_, quoted heading, lone ~', () => {
+  expect(sanitizeForSpeech('Set TALK_SPEAK in my_var; this is _important_ and **bold**.')).toBe('Set TALK_SPEAK in my_var; this is important and bold.')
+  expect(sanitizeForSpeech('> # Title\n\n1. first\n2. second')).toBe('Title first second')
+  expect(sanitizeForSpeech('Look in ~/.hermes/models ~ ok')).toBe('Look in /.hermes/models ok')
+})

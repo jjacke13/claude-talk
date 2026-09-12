@@ -47,11 +47,13 @@ export function sanitizeForSpeech(md: string, maxChars = 1200): string {
     .replace(/^\s*\|.*\|\s*$/gm, ' ')          // table rows
     .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')     // images
     .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')   // links → label
+    .replace(/^\s*>\s?/gm, '')                 // blockquotes (before headings: "> # T")
     .replace(/^\s{0,3}#{1,6}\s+/gm, '')        // headings
-    .replace(/^\s*>\s?/gm, '')                 // blockquotes
     .replace(/^\s*[-*+]\s+/gm, '')             // bullets
     .replace(/^\s*\d+\.\s+/gm, '')             // numbered lists
-    .replace(/(\*\*|__|\*|_|~~)/g, '')         // emphasis markers
+    .replace(/(\*\*|__|~~|\*)/g, '')            // emphasis markers
+    .replace(/(?<!\w)_|_(?!\w)/g, '')             // _emphasis_ but not snake_case
+    .replace(/~(?=\/|\s|$)/g, '')                 // lone ~ (paths)
     .replace(/https?:\/\/\S+/g, 'link')        // bare URLs
     .replace(/\s+/g, ' ')
     .trim()

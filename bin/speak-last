@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 // Stop hook: speak the reply that just finished, per TALK_SPEAK. Detaches the player so
 // the hook returns immediately; a new reply interrupts a still-running one.
-import { readFileSync, writeFileSync } from 'fs'
-import { SAY_PID, loadConfig, log } from '../voice.ts'
+import { openSync, readFileSync, writeFileSync } from 'fs'
+import { LOG_FILE, SAY_PID, loadConfig } from '../voice.ts'
 import { lastUserText, sanitizeForSpeech, shouldSpeak } from '../talk.ts'
 
 let input: any = {}
@@ -21,7 +21,8 @@ const text = sanitizeForSpeech(String(input.last_assistant_message ?? ''), Numbe
 if (!text) process.exit(0)
 
 try { process.kill(Number(readFileSync(SAY_PID, 'utf8')), 'SIGTERM') } catch {}   // interrupt previous speech
-const p = Bun.spawn(['bun', new URL('./say', import.meta.url).pathname, text], { stdin: 'ignore', stdout: 'ignore', stderr: 'ignore' })
+const logFd = openSync(LOG_FILE, 'a')   // the detached speaker's errors land in talk.log
+const p = Bun.spawn(['bun', new URL('./say', import.meta.url).pathname, text], { stdin: 'ignore', stdout: 'ignore', stderr: logFd })
 p.unref()
 writeFileSync(SAY_PID, String(p.pid))
 process.exit(0)

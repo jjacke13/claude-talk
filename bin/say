@@ -3,4 +3,7 @@
 import { loadConfig, say } from '../voice.ts'
 const text = (process.argv.slice(2).join(' ') || await new Response(Bun.stdin.stream()).text()).trim()
 if (!text) process.exit(0)
-process.exit(await say(loadConfig(), text).exited)
+const { piper, player } = say(loadConfig(), text)
+// speak-last interrupts an older reply by SIGTERM-ing this wrapper: take the children down too.
+for (const s of ['SIGTERM', 'SIGINT'] as const) process.on(s, () => { piper.kill(); player.kill(); process.exit(0) })
+process.exit(await player.exited)

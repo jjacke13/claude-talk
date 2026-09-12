@@ -1,7 +1,7 @@
 // Side-effecting voice plumbing shared by the bin/ scripts: config from disk+env, piper
 // synthesis (raw s16 mono at the voice's sample rate), playback, opus rendering, recording,
 // whisper transcription, and the inbox drop. Pure logic lives in talk.ts.
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { resolveConfig, type Config } from './talk.ts'
@@ -11,7 +11,14 @@ export const STATE_DIR = process.env.TALK_STATE_DIR
 export const INBOX = join(STATE_DIR, 'inbox')
 export const CONFIG_FILE = join(STATE_DIR, 'config')
 export const SAY_PID = join(STATE_DIR, 'say.pid')
-export const log = (line: string) => process.stderr.write(`talk: ${line}\n`)
+export const LOG_FILE = join(STATE_DIR, 'talk.log')
+try { mkdirSync(INBOX, { recursive: true }) } catch {}   // every script may run before the server ever did
+
+// stderr for the terminal, talk.log for the detached hook path (whose stderr nobody sees).
+export const log = (line: string) => {
+  process.stderr.write(`talk: ${line}\n`)
+  try { appendFileSync(LOG_FILE, `${new Date().toISOString()} ${line}\n`) } catch {}
+}
 
 export function loadConfig(): Config {
   const text = existsSync(CONFIG_FILE) ? readFileSync(CONFIG_FILE, 'utf8') : ''
@@ -33,12 +40,12 @@ export function synth(cfg: Config, text: string) {
   return Bun.spawn(['piper', '--model', cfg.TALK_VOICE, '--output-raw'], { stdin: new Blob([text + '\n']), stdout: 'pipe', stderr: 'ignore' })
 }
 
-// Speak now; returns the player process so the caller can wait or record its pid.
+// Speak now. Returns both children so a SIGTERM to the wrapper can cut the audio.
 export function say(cfg: Config, text: string) {
-  const p = synth(cfg, text)
+  const piper = synth(cfg, text)
   const rate = String(voiceRate(cfg.TALK_VOICE))
-  const player = Bun.spawn([cfg.TALK_PLAYER, '--raw', '--rate', rate, '--channels', '1', '--format', 's16', '-'], { stdin: p.stdout, stdout: 'ignore', stderr: 'ignore' })
-  return player
+  const player = Bun.spawn([cfg.TALK_PLAYER, '--raw', '--rate', rate, '--channels', '1', '--format', 's16', '-'], { stdin: piper.stdout, stdout: 'ignore', stderr: 'ignore' })
+  return { piper, player }
 }
 
 // Render to ogg/opus (what SimpleX/Telegram voice bubbles want). Returns duration in seconds.
