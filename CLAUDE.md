@@ -29,4 +29,5 @@ claude-simplex voice bubbles (not wired yet). Built + **LIVE-VALIDATED 2026-09-1
   (`{rate}`, `{raw}`), defaults PipeWire on linux / SoX elsewhere; recorder writes RAW, we add the
   WAV header (`wrapWav`) so killing it is always safe; win32 hold = `bun:ffi` GetAsyncKeyState poll
   (`VKEYS`). **All non-Linux paths UNTESTED** — first thing to validate on the Windows machine.
+- **Wake word "Claudia": parked, design in docs/superpowers/specs/2026-09-12-wake-word-design.md** (openWakeWord in the server, TALK_WAKE=on; after the peer plugin).
 - Not done: Greek voice download, VAD, streaming (needs Agent SDK/hades), SimpleX wiring.
