@@ -10,7 +10,9 @@ claude-simplex voice bubbles (not wired yet). Built 2026-09-12; **live test pend
   Defaults point at `~/.hermes/models/{ggml-base.en.bin, piper/en_GB-alan-medium.onnx}`.
 - Log: `~/.claude/channels/talk/talk.log` (the detached speaker's stderr lands there).
 - Launch: `claude --plugin-dir ~/Desktop/repos/claude-talk --dangerously-load-development-channels plugin:talk@inline`
-  (installed: `plugin:talk@claude-talk`). Push-to-talk: `bun ~/Desktop/repos/claude-talk/bin/talk`.
-- Gotchas: `pgrep -f` in checks matches the calling shell (+1). pw-record prints the wav
+  (installed: `plugin:talk@claude-talk`). Push-to-talk: `/talk:listen [s]` in-session, or `bun …/bin/talk` from another terminal.
+  Mirror mode = marker file `spoken` written by bin/talk, consumed by speak-last.
+- Gotchas: **Bun `fs.watch` silently stops delivering after minutes idle → server POLLS (500 ms).**
+  `pgrep -f` in checks matches the calling shell (+1). pw-record prints the wav
   path on stderr (harmless). `--seconds N` for hands-free stop; Enter otherwise.
 - Not done: Greek voice download, VAD, streaming (needs Agent SDK/hades), SimpleX wiring.

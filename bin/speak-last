@@ -2,8 +2,8 @@
 // Stop hook: speak the reply that just finished, per TALK_SPEAK. Detaches the player so
 // the hook returns immediately; a new reply interrupts a still-running one.
 import { openSync, readFileSync, writeFileSync } from 'fs'
-import { LOG_FILE, SAY_PID, loadConfig } from '../voice.ts'
-import { lastUserText, sanitizeForSpeech, shouldSpeak } from '../talk.ts'
+import { LOG_FILE, SAY_PID, loadConfig, takeSpoken } from '../voice.ts'
+import { sanitizeForSpeech, shouldSpeak } from '../talk.ts'
 
 let input: any = {}
 try { input = JSON.parse(await new Response(Bun.stdin.stream()).text()) } catch {}
@@ -11,11 +11,8 @@ if (input.stop_hook_active) process.exit(0)
 
 const cfg = loadConfig()
 if (cfg.TALK_SPEAK === 'off') process.exit(0)
-let lastUser = ''
-if (cfg.TALK_SPEAK === 'mirror') {
-  try { lastUser = lastUserText(readFileSync(String(input.transcript_path), 'utf8')) } catch {}
-}
-if (!shouldSpeak(cfg.TALK_SPEAK, lastUser)) process.exit(0)
+// mirror: the turn was spoken iff bin/talk left a fresh marker (consumed here, so one reply per utterance).
+if (!shouldSpeak(cfg.TALK_SPEAK, takeSpoken())) process.exit(0)
 
 const text = sanitizeForSpeech(String(input.last_assistant_message ?? ''), Number(cfg.TALK_MAX_SPEAK_CHARS) || 1200)
 if (!text) process.exit(0)

@@ -1,7 +1,7 @@
 // Side-effecting voice plumbing shared by the bin/ scripts: config from disk+env, piper
 // synthesis (raw s16 mono at the voice's sample rate), playback, opus rendering, recording,
 // whisper transcription, and the inbox drop. Pure logic lives in talk.ts.
-import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { resolveConfig, type Config } from './talk.ts'
@@ -81,4 +81,15 @@ export function drop(text: string): string {
   writeFileSync(join(INBOX, `${name}.tmp`), text + '\n')
   renameSync(join(INBOX, `${name}.tmp`), join(INBOX, name))
   return name
+}
+
+// Modality marker: bin/talk sets it; the Stop hook consumes it to decide whether to speak.
+export const SPOKEN_MARK = join(STATE_DIR, 'spoken')
+export function markSpoken(): void { try { writeFileSync(SPOKEN_MARK, String(Date.now())) } catch {} }
+export function takeSpoken(maxAgeMs = 10 * 60_000): boolean {
+  try {
+    const fresh = Date.now() - Number(readFileSync(SPOKEN_MARK, 'utf8')) < maxAgeMs
+    unlinkSync(SPOKEN_MARK)
+    return fresh
+  } catch { return false }
 }

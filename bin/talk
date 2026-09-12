@@ -2,12 +2,14 @@
 // talk              → record until Enter, transcribe locally, drop into the session
 // talk --seconds N  → auto-stop after N seconds
 // talk "text"       → skip the mic, drop the text as if spoken (test path)
+// talk --print      → print the transcript only (used by /talk:listen inside a session); no drop
 import { unlinkSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { INBOX, drop, loadConfig, log, record, transcribe } from '../voice.ts'
+import { INBOX, drop, loadConfig, log, markSpoken, record, transcribe } from '../voice.ts'
 
-const args = process.argv.slice(2)
+const args = process.argv.slice(2).filter(a => a !== '--print')
+const printOnly = process.argv.includes('--print')
 const secIdx = args.indexOf('--seconds')
 const seconds = secIdx >= 0 ? Number(args[secIdx + 1]) : 0
 const typed = args.filter((_, i) => secIdx < 0 || (i !== secIdx && i !== secIdx + 1)).join(' ').trim()
@@ -26,6 +28,6 @@ if (!text) {
   if (!text || /^\[.*\]$/.test(text)) { log('(nothing heard)'); process.exit(0) }   // whisper emits e.g. "[BLANK_AUDIO]"
 }
 console.log(text)
-drop(text)
-log(`dropped into ${INBOX}`)
+markSpoken()                       // the Stop hook mirrors modality off this marker
+if (!printOnly) { drop(text); log(`dropped into ${INBOX}`) }
 process.exit(0)

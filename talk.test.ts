@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { CHANNEL_TAG, lastUserText, parseConfig, resolveConfig, sanitizeForSpeech, shouldSpeak, sortInbox } from './talk.ts'
+import { parseConfig, resolveConfig, sanitizeForSpeech, shouldSpeak, sortInbox } from './talk.ts'
 
 test('parseConfig: comments, quotes, export, last wins', () => {
   expect(parseConfig(['# c', '', 'TALK_LANG=el # greek', 'export TALK_SPEAK=on', 'TALK_VOICE="a # b"', 'TALK_LANG=fr', 'x=1'].join('\n')))
@@ -26,27 +26,15 @@ test('sanitizeForSpeech: cuts long text at a sentence boundary', () => {
 })
 
 test('shouldSpeak modes', () => {
-  expect(shouldSpeak('on', '')).toBe(true)
-  expect(shouldSpeak('off', CHANNEL_TAG)).toBe(false)
-  expect(shouldSpeak('mirror', `${CHANNEL_TAG} ts="x">hi</channel>`)).toBe(true)
-  expect(shouldSpeak('mirror', 'typed prompt')).toBe(false)
-  expect(shouldSpeak('weird', CHANNEL_TAG)).toBe(false)
+  expect(shouldSpeak('on', false)).toBe(true)
+  expect(shouldSpeak('off', true)).toBe(false)
+  expect(shouldSpeak('mirror', true)).toBe(true)
+  expect(shouldSpeak('mirror', false)).toBe(false)
+  expect(shouldSpeak('weird', true)).toBe(false)
 })
 
 test('sortInbox: numeric order, txt only', () => {
   expect(sortInbox(['9.txt', '10.txt', 'a.tmp', '2.txt'])).toEqual(['2.txt', '9.txt', '10.txt'])
-})
-
-test('lastUserText: string and array content, tool_result ignored', () => {
-  const lines = [
-    JSON.stringify({ type: 'user', message: { content: 'first' } }),
-    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'a' }] } }),
-    JSON.stringify({ type: 'user', message: { content: [{ type: 'text', text: `${CHANNEL_TAG} ts="t">yo</channel>` }] } }),
-    JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', content: 'x' }] } }),
-    'not json',
-  ].join('\n')
-  expect(lastUserText(lines)).toContain(CHANNEL_TAG)
-  expect(lastUserText('')).toBe('')
 })
 
 test('sanitizeForSpeech: keeps snake_case, strips _emphasis_, quoted heading, lone ~', () => {

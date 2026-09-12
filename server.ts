@@ -6,7 +6,6 @@
  */
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
-import { watch } from 'fs'
 import { mkdir, readFile, readdir, rename, unlink } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
@@ -63,10 +62,13 @@ async function consume(name: string): Promise<void> {
 await mkdir(FAILED, { recursive: true })
 await mcp.connect(new StdioServerTransport())
 
-// Watch first, then sweep what was dropped while no session was running — a file landing
-// between readdir and watch would otherwise be missed by both; `seen` de-dups the overlap.
-const watcher = watch(INBOX, (_event, name) => { if (name) void consume(String(name)) })
-for (const name of sortInbox(await readdir(INBOX))) await consume(name)
+// Poll, don't fs.watch: Bun's inotify watcher stopped delivering events after the process sat
+// idle for a few minutes (2026-09-12, live). A 500 ms readdir of a near-empty dir is free.
+async function sweep(): Promise<void> {
+  for (const name of sortInbox(await readdir(INBOX).catch(() => [] as string[]))) await consume(name)
+}
+await sweep()
+const poller = setInterval(() => void sweep(), 500)
 log(`ready; inbox ${INBOX}`)
 
 let shuttingDown = false
@@ -74,7 +76,7 @@ function shutdown(): void {
   if (shuttingDown) return
   shuttingDown = true
   log('shutting down')
-  watcher.close()
+  clearInterval(poller)
   setTimeout(() => process.exit(0), 200)
 }
 process.stdin.on('end', shutdown)

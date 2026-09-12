@@ -1,8 +1,6 @@
 // Pure helpers for claude-talk: config parsing, speech sanitizing, speak decision, inbox order.
 // No env, no process, no MCP — everything here is unit-tested in talk.test.ts.
 
-export const CHANNEL_TAG = '<channel source="plugin:talk:talk"'
-
 export const DEFAULTS = {
   TALK_LANG: 'en',
   TALK_MODEL: '~/.hermes/models/ggml-base.en.bin',
@@ -65,10 +63,10 @@ export function sanitizeForSpeech(md: string, maxChars = 1200): string {
   return t
 }
 
-// mirror: speak only when the turn was spoken (last user entry carries the talk channel tag).
-export function shouldSpeak(mode: string, lastUserText: string): boolean {
+// mirror: speak only when the turn was spoken (bin/talk left its marker).
+export function shouldSpeak(mode: string, spoken: boolean): boolean {
   if (mode === 'on') return true
-  if (mode === 'mirror') return lastUserText.includes(CHANNEL_TAG)
+  if (mode === 'mirror') return spoken
   return false
 }
 
@@ -77,20 +75,3 @@ export function sortInbox(names: string[]): string[] {
   return names.filter(n => n.endsWith('.txt')).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
 }
 
-// Last `user` entry's text from a Claude Code transcript (JSONL). Tool results don't count.
-export function lastUserText(jsonl: string): string {
-  let last = ''
-  for (const line of jsonl.split('\n')) {
-    if (!line.startsWith('{')) continue
-    let e: any
-    try { e = JSON.parse(line) } catch { continue }
-    if (e?.type !== 'user') continue
-    const c = e.message?.content
-    if (typeof c === 'string') last = c
-    else if (Array.isArray(c)) {
-      const texts = c.filter((p: any) => p?.type === 'text').map((p: any) => p.text)
-      if (texts.length) last = texts.join('\n')
-    }
-  }
-  return last
-}

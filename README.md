@@ -28,7 +28,10 @@ claude --plugin-dir ~/Desktop/repos/claude-talk --dangerously-load-development-c
 
 ## Use
 
-In a second terminal (or bind it to a hotkey):
+**Inside the session (no second terminal):** `/talk:listen` records 10 s (`/talk:listen 20`
+for longer), transcribes, and answers — spoken back in `mirror` mode.
+
+**From a second terminal or a hotkey:**
 
 ```sh
 bun ~/Desktop/repos/claude-talk/bin/talk            # record until Enter, transcribe, send
@@ -57,7 +60,7 @@ multilingual whisper model (`ggml-base.bin`, not `*.en.bin`) and a matching pipe
 
 | script | does |
 |---|---|
-| `bin/talk` | push-to-talk → inbox |
+| `bin/talk` | push-to-talk → inbox (`--print` = transcript only + marker, used by `/talk:listen`) |
 | `bin/say "text"` | speak now |
 | `bin/tts out.ogg "text"` | render ogg/opus + print duration — for SimpleX/Telegram voice bubbles |
 | `bin/speak-last` | the Stop hook (reads hook JSON on stdin) |
@@ -67,7 +70,9 @@ multilingual whisper model (`ggml-base.bin`, not `*.en.bin`) and a matching pipe
 `bin/talk` writes `~/.claude/channels/talk/inbox/<epoch-ms>.txt` atomically; the MCP
 server (`server.ts`) watches that directory and pushes each file as a channel
 notification. `hooks/hooks.json` registers `bin/speak-last` on `Stop`; it detaches
-`bin/say` so the hook returns instantly.
+`bin/say` so the hook returns instantly. The server polls the inbox every 500 ms
+(Bun's `fs.watch` dropped events after a few idle minutes). `mirror` mode keys off a
+marker file `bin/talk` writes (`~/.claude/channels/talk/spoken`), consumed per reply.
 
 ## Test
 
