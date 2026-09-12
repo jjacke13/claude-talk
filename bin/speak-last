@@ -4,7 +4,7 @@
 // the end. Blocks queue behind whatever is still playing; a new turn interrupts.
 import { openSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
-import { LOG_FILE, SAY_PID, STATE_DIR, loadConfig, takeSpoken } from '../voice.ts'
+import { LOG_FILE, SAY_PID, STATE_DIR, loadConfig, log, takeSpoken } from '../voice.ts'
 import { sanitizeForSpeech, shouldSpeak, turnState } from '../talk.ts'
 
 const PROGRESS = join(STATE_DIR, 'speak-progress')   // "<turnKey> <blocksSpoken> <speakThisTurn>"
@@ -18,6 +18,10 @@ if (cfg.TALK_SPEAK === 'off') process.exit(0)
 
 let state = { key: -1, texts: [] as string[] }
 try { state = turnState(readFileSync(String(input.transcript_path), 'utf8')) } catch {}
+// Stop can fire before the final assistant message is appended to the transcript: use the
+// hook's own copy of it when the transcript does not have it yet.
+const last = typeof input.last_assistant_message === 'string' ? input.last_assistant_message.trim() : ''
+if (last && !state.texts.some(t => t.trim() === last)) state.texts.push(last)
 if (!state.texts.length) process.exit(0)
 
 let [prevKey, prevCount, prevSpeak] = ['-1', '0', '']
@@ -45,4 +49,5 @@ const args = ['bun', new URL('./say', import.meta.url).pathname, ...(after ? ['-
 const p = Bun.spawn(args, { stdin: 'ignore', stdout: 'ignore', stderr: logFd })
 p.unref()
 writeFileSync(SAY_PID, String(p.pid))
+log(`${input.hook_event_name ?? 'hook'}: turn ${state.key} blocks ${done}→${state.texts.length}, say ${p.pid}${after ? ' after ' + after : ''}: "${text.slice(0, 50)}"`)
 process.exit(0)
