@@ -32,5 +32,10 @@ PreToolUse narration opt-in `TALK_NARRATE`; `TALK_REPLY=voice` → channel meta 
   (`{rate}`, `{raw}`), defaults PipeWire on linux / SoX elsewhere; recorder writes RAW, we add the
   WAV header (`wrapWav`) so killing it is always safe; win32 hold = `bun:ffi` GetAsyncKeyState poll
   (`VKEYS`). **All non-Linux paths UNTESTED** — first thing to validate on the Windows machine.
-- **Wake word "Claudia": parked, design in docs/superpowers/specs/2026-09-12-wake-word-design.md** (openWakeWord in the server, TALK_WAKE=on; after the peer plugin).
+- **Wake word "Claudia": in progress on `feat/wake-word`, design in docs/superpowers/specs/2026-09-12-wake-word-design.md** (openWakeWord in the server, TALK_WAKE=on).
+  Step 1 done 2026-09-13: runtime = nix devShell python (`onnxruntime numpy scipy tqdm requests sounddevice`) + venv
+  `~/.claude/channels/talk/wake/venv` with ONLY `pip install --no-deps openwakeword` (0.6.0; nixpkgs lacks it — has
+  `pyopen-wakeword` 1.1.0, Rhasspy's alternative lib, not evaluated). Venv python sees nix packages only via the
+  devShell's `PYTHONPATH` → run inside `nix develop --builders ''`. `bin/wake-check.py` = proof; piper "hey jarvis"
+  through speaker → 0.998. Models cached in the venv's `openwakeword/resources/models/`.
 - Not done: Greek voice download, VAD, streaming (needs Agent SDK/hades), SimpleX wiring.

@@ -79,6 +79,24 @@ multilingual whisper model (`ggml-base.bin`, not `*.en.bin`) and a matching pipe
 | `bin/say "text"` | speak now |
 | `bin/tts out.ogg "text"` | render ogg/opus + print duration — for SimpleX/Telegram voice bubbles |
 | `bin/speak-last` | the Stop hook (reads hook JSON on stdin) |
+| `bin/wake-check.py [s]` | wake-word runtime proof: listens `s` seconds, prints max `hey_jarvis` score |
+
+## Wake word (in progress — runtime only so far)
+
+nixpkgs has no `openwakeword`, so the split is: every binary from nixpkgs (the dev shell's
+`python3` carries `onnxruntime numpy scipy tqdm requests sounddevice`), and only the pure-Python
+`openwakeword` pip-installed with `--no-deps` into a venv under the talk state dir. One-time setup:
+
+```
+nix develop --builders ''            # --builders '' on this laptop: remote builders hang
+python3 -m venv --system-site-packages ~/.claude/channels/talk/wake/venv
+~/.claude/channels/talk/wake/venv/bin/pip install --no-deps openwakeword
+~/.claude/channels/talk/wake/venv/bin/python bin/wake-check.py 5   # downloads the models once
+```
+
+The venv only sees the nix packages through the `PYTHONPATH` the dev shell exports, so run it
+from inside `nix develop` (same contract as the other binaries). Mic goes through PortAudio →
+ALSA `default` → PipeWire. Proof: `bin/say "hey jarvis"` while `wake-check.py` listens → 0.998.
 
 ## How it works
 
