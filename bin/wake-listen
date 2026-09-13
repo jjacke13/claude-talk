@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+"""Wake-word detector: mic → openwakeword → one line per detection on stdout, "<model> <score>".
+
+Prints "ready" once the model is loaded. 2 s refractory so one utterance is one line. Exits
+cleanly on SIGTERM. Run through bin/wake-detector (nix dev shell + venv python), see README.
+  wake-listen [--model hey_jarvis | --model /path/to/word.onnx] [--threshold 0.5]
+"""
+import argparse
+import ctypes
+import signal
+import sys
+import time
+
+import sounddevice as sd
+import openwakeword
+from openwakeword.model import Model
+
+RATE = 16000
+CHUNK = 1280  # 80 ms, the frame size openwakeword expects
+REFRACTORY_S = 2.0
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--model", default="hey_jarvis", help="prebuilt openwakeword name or path to an .onnx")
+    ap.add_argument("--threshold", type=float, default=0.5)
+    args = ap.parse_args()
+    if not args.model.endswith(".onnx"):
+        openwakeword.utils.download_models([args.model])  # no-op once cached in the venv
+    model = Model(wakeword_models=[args.model], inference_framework="onnx")
+    name = next(iter(model.models))  # the key openwakeword reports scores under (basename of the model)
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+    ctypes.CDLL(None).prctl(1, signal.SIGTERM)  # PR_SET_PDEATHSIG: no orphaned mic reader if the server dies
+    print("ready", flush=True)
+    last = 0.0
+    with sd.InputStream(samplerate=RATE, channels=1, dtype="int16", blocksize=CHUNK) as mic:
+        while True:
+            frames, _ = mic.read(CHUNK)
+            score = float(model.predict(frames[:, 0])[name])
+            now = time.monotonic()
+            if score >= args.threshold and now - last >= REFRACTORY_S:
+                last = now
+                print(f"{name} {score:.3f}", flush=True)
+
+
+if __name__ == "__main__":
+    main()

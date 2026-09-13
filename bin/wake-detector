@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Runs bin/wake-listen inside the wake-word runtime: the flake dev shell (onnxruntime, numpy,
+# sounddevice… from nixpkgs) plus the venv that holds only openwakeword. Linux-only for now.
+# wake.ts spawns this so it stays runtime-agnostic; arguments pass straight through.
+set -euo pipefail
+root=$(cd "$(dirname "$0")/.." && pwd)
+state=${TALK_STATE_DIR:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/channels/talk}
+# --builders '': remote builders can hang this laptop's nix; the shell is already built locally.
+exec nix develop "$root" --builders '' -c "$state/wake/venv/bin/python" "$root/bin/wake-listen" "$@"
