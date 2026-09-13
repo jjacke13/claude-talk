@@ -26,6 +26,15 @@ export function defaultsFor(platform: string) {
     TALK_SPEED: '1.0',
     TALK_NARRATE: 'off',
     TALK_REPLY: 'both',
+    // Wake word (wake.ts). TALK_WAKE_WORD is what the user says; TALK_WAKE_MODEL is the openwakeword
+    // model that hears it — the prebuilt "hey_jarvis" stands in until models/hey_claudia.onnx exists.
+    TALK_WAKE: 'off',
+    TALK_WAKE_WORD: 'hey claudia',
+    TALK_WAKE_MODEL: 'hey_jarvis',
+    TALK_WAKE_THRESHOLD: '0.5',     // detector score 0–1
+    TALK_WAKE_FOLLOWUP_S: '6',      // seconds after Claudia stops talking during which no wake word is needed
+    TALK_WAKE_SILENCE_MS: '1200',   // this much quiet after speech ends the utterance
+    TALK_WAKE_RMS: '0.01',          // mic RMS (0–1) that counts as speech; laptop mic floor is ~0.002
     ...(AUDIO_DEFAULTS[platform] ?? AUDIO_DEFAULTS.other!),
   }
 }
@@ -91,6 +100,46 @@ export function sanitizeForSpeech(md: string, maxChars = 1200): string {
     t = (end > maxChars / 2 ? cut.slice(0, end + 1) : cut).trim()
   }
   return t
+}
+
+// --- wake word: end-of-utterance by RMS, and the "listening" beep ---------------------------
+
+// RMS of raw s16le mono, normalized to 0–1.
+export function rms(pcm: Buffer): number {
+  const n = pcm.length >> 1
+  if (!n) return 0
+  let sum = 0
+  for (let i = 0; i < n; i++) { const v = pcm.readInt16LE(i * 2) / 32768; sum += v * v }
+  return Math.sqrt(sum / n)
+}
+
+// `ms` of a sine at `hz`, s16le mono at `rate`, half scale, 5 ms fades so it does not click.
+export function beepPcm(rate: number, hz = 880, ms = 120): Buffer {
+  const n = Math.round(rate * ms / 1000), ramp = Math.round(rate * 0.005), buf = Buffer.alloc(n * 2)
+  for (let i = 0; i < n; i++) {
+    const env = Math.min(1, i / ramp, (n - 1 - i) / ramp)
+    buf.writeInt16LE(Math.round(Math.sin(2 * Math.PI * hz * i / rate) * 16384 * env), i * 2)
+  }
+  return buf
+}
+
+// One utterance: t0 = recording start, loudMs = cumulative loud audio, heard = when loudMs first
+// reached MIN_SPEECH_MS (0 = not yet), loud = last loud chunk. All ms. A blip shorter than
+// MIN_SPEECH_MS (the beep's tail, a click) must not start the silence countdown.
+export type Listen = { t0: number; loudMs: number; heard: number; loud: number }
+export type ListenOpts = { silenceMs: number; speechWithinMs: number; capMs: number }
+export const MIN_SPEECH_MS = 300
+export const listenStart = (t0: number): Listen => ({ t0, loudMs: 0, heard: 0, loud: 0 })
+export function listenStep(s: Listen, level: number, t: number, threshold: number, chunkMs: number, minSpeechMs = MIN_SPEECH_MS): Listen {
+  if (level < threshold) return s
+  const loudMs = s.loudMs + chunkMs
+  return { ...s, loudMs, heard: s.heard || (loudMs >= minSpeechMs ? t : 0), loud: t }
+}
+// silence = speech then `silenceMs` quiet (send it); nospeech = nothing said in time (drop it); cap = hard stop (send it).
+export function listenDone(s: Listen, t: number, o: ListenOpts): 'silence' | 'nospeech' | 'cap' | null {
+  if (!s.heard) return t - s.t0 >= Math.min(o.speechWithinMs, o.capMs) ? 'nospeech' : null
+  if (t - s.t0 >= o.capMs) return 'cap'
+  return t - s.loud >= o.silenceMs ? 'silence' : null
 }
 
 // mirror: speak only when the turn was spoken (bin/talk left its marker).

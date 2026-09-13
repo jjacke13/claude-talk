@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { parseConfig, resolveConfig, sanitizeForSpeech, shouldSpeak, sortInbox, splitCmd, toolNarration, turnState, turnTexts } from './talk.ts'
+import { beepPcm, listenDone, listenStart, listenStep, parseConfig, resolveConfig, rms, sanitizeForSpeech, shouldSpeak, sortInbox, splitCmd, toolNarration, turnState, turnTexts } from './talk.ts'
 
 test('parseConfig: comments, quotes, export, last wins', () => {
   expect(parseConfig(['# c', '', 'TALK_LANG=el # greek', 'export TALK_SPEAK=on', 'TALK_VOICE="a # b"', 'TALK_LANG=fr', 'x=1'].join('\n')))
@@ -85,4 +85,46 @@ test('toolNarration', () => {
   expect(toolNarration('Edit', { file_path: '/a/talk.ts' })).toBe('editing talk.ts')
   expect(toolNarration('Agent', { description: 'Review branch' })).toBe('dispatching an agent: Review branch')
   expect(toolNarration('Weird', {})).toBe('')
+})
+
+test('wake defaults present', () => {
+  const c = resolveConfig('', {}, '/h')
+  expect(c.TALK_WAKE).toBe('off')
+  expect(c.TALK_WAKE_WORD).toBe('hey claudia')
+  expect(c.TALK_WAKE_MODEL).toBe('hey_jarvis')
+  expect([c.TALK_WAKE_THRESHOLD, c.TALK_WAKE_FOLLOWUP_S, c.TALK_WAKE_SILENCE_MS, c.TALK_WAKE_RMS]).toEqual(['0.5', '6', '1200', '0.01'])
+})
+
+test('rms: silence 0, full-scale square 1, empty 0', () => {
+  expect(rms(Buffer.alloc(64))).toBe(0)
+  const sq = Buffer.alloc(8); sq.writeInt16LE(-32768, 0); sq.writeInt16LE(-32768, 2); sq.writeInt16LE(-32768, 4); sq.writeInt16LE(-32768, 6)
+  expect(rms(sq)).toBe(1)
+  expect(rms(Buffer.alloc(0))).toBe(0)
+})
+
+test('beepPcm: right length, starts at zero, half-scale peak', () => {
+  const b = beepPcm(16000, 880, 120)
+  expect(b.length).toBe(16000 * 120 / 1000 * 2)
+  expect(b.readInt16LE(0)).toBe(0)
+  let peak = 0; for (let i = 0; i < b.length; i += 2) peak = Math.max(peak, Math.abs(b.readInt16LE(i)))
+  expect(peak).toBeGreaterThan(16000); expect(peak).toBeLessThanOrEqual(16384)
+})
+
+test('listenStep/listenDone: silence after speech, no speech, cap', () => {
+  const o = { silenceMs: 1200, speechWithinMs: 6000, capMs: 20000 }
+  let s = listenStart(0)
+  expect(listenDone(s, 500, o)).toBeNull()
+  expect(listenDone(s, 6000, o)).toBe('nospeech')             // window elapsed, nothing said
+  s = listenStep(s, 0.05, 700, 0.01, 100)                      // a 100 ms blip: loud, but not speech yet
+  expect(s.heard).toBe(0); expect(s.loud).toBe(700)
+  expect(listenDone(s, 2000, o)).toBeNull()                    // so no silence countdown from it
+  s = listenStep(s, 0.05, 1000, 0.01, 200)                     // 300 ms cumulative at 1 s → speech
+  expect(s.heard).toBe(1000)
+  s = listenStep(s, 0.001, 1500, 0.01, 100)                    // quiet chunk keeps `loud` at 1000
+  expect(s.loud).toBe(1000)
+  expect(listenDone(s, 2100, o)).toBeNull()                    // 1.1 s quiet: not yet
+  expect(listenDone(s, 2200, o)).toBe('silence')               // 1.2 s quiet: done
+  s = listenStep(s, 0.05, 19990, 0.01, 100)
+  expect(listenDone(s, 20000, o)).toBe('cap')
+  expect(listenDone(listenStart(0), 20000, { ...o, speechWithinMs: 30000 })).toBe('nospeech')   // cap without speech = nothing
 })

@@ -32,10 +32,23 @@ PreToolUse narration opt-in `TALK_NARRATE`; `TALK_REPLY=voice` → channel meta 
   (`{rate}`, `{raw}`), defaults PipeWire on linux / SoX elsewhere; recorder writes RAW, we add the
   WAV header (`wrapWav`) so killing it is always safe; win32 hold = `bun:ffi` GetAsyncKeyState poll
   (`VKEYS`). **All non-Linux paths UNTESTED** — first thing to validate on the Windows machine.
-- **Wake word "Claudia": in progress on `feat/wake-word`, design in docs/superpowers/specs/2026-09-12-wake-word-design.md** (openWakeWord in the server, TALK_WAKE=on).
+- **Wake word "hey claudia": in progress on `feat/wake-word`, design in docs/superpowers/specs/2026-09-12-wake-word-design.md** (openWakeWord in the server, TALK_WAKE=on).
   Step 1 done 2026-09-13: runtime = nix devShell python (`onnxruntime numpy scipy tqdm requests sounddevice`) + venv
   `~/.claude/channels/talk/wake/venv` with ONLY `pip install --no-deps openwakeword` (0.6.0; nixpkgs lacks it — has
   `pyopen-wakeword` 1.1.0, Rhasspy's alternative lib, not evaluated). Venv python sees nix packages only via the
   devShell's `PYTHONPATH` → run inside `nix develop --builders ''`. `bin/wake-check.py` = proof; piper "hey jarvis"
   through speaker → 0.998. Models cached in the venv's `openwakeword/resources/models/`.
-- Not done: Greek voice download, VAD, streaming (needs Agent SDK/hades), SimpleX wiring.
+  **Steps 2+3 done 2026-09-13** (worker session, on laptop's instruction): `bin/wake-listen` (py detector, `ready` then
+  `<model> <score>` lines, 2 s refractory, PR_SET_PDEATHSIG so it dies with the server) ← `bin/wake-detector` (bash:
+  `exec nix develop <root> --builders '' -c <venv python> …`, exec chain holds so the child pid IS python) ← `wake.ts`
+  (state machine idle→listening→followup, `wake.lock`, beep = 120 ms 880 Hz sine via TALK_PLAYER, end-of-utterance =
+  RMS via pure `listenStep/listenDone` in talk.ts; follow-up window opens on say.pid alive→gone after a wake turn).
+  Wired in server.ts after startHold. Config keys TALK_WAKE(off) _WORD("hey claudia") _MODEL(hey_jarvis) _THRESHOLD _FOLLOWUP_S
+  _SILENCE_MS _RMS(0.01 — added beyond the agreed six: mic calibration knob). Validated with piper through the speaker
+  (throwaway script, NOT the live server): wake → beep → question → transcript → reply → follow-up without wake word →
+  silence closes. Gotchas found: beep/wake-word tail at recording start → `MIN_SPEECH_MS` 300 cumulative + `GRACE_MS` 500
+  before speech counts; cori-high piper has ~2 s synth latency before audio (matters for scripted tests); laptop mic floor
+  ≈ 0.002 RMS, speaker-fed speech 0.01–0.07; each capture logs its `rms‰` trace to talk.log for tuning.
+  Barge-in (wake word while Claudia speaks) NOT validated — two synthetic voices on one speaker masked it; step 4 (live).
+- Not done: step 4 live validation, step 5 training `models/hey_claudia.onnx`, step 6 `/talk:configure wake …`,
+  Greek voice download, VAD, streaming (needs Agent SDK/hades), SimpleX wiring.

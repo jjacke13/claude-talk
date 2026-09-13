@@ -80,6 +80,7 @@ moves the directory). Write it directly or, inside a session, use `/talk:configu
 | `player <cmd>` | `TALK_PLAYER` | PipeWire on Linux, SoX `play` elsewhere | argv template, `{rate}` placeholder, raw s16 mono on stdin |
 | `recorder <cmd>` | `TALK_RECORDER` | PipeWire on Linux, SoX `rec` elsewhere | argv template, must write raw s16le 16 kHz mono to `{raw}` |
 | `max <chars>` | `TALK_MAX_SPEAK_CHARS` | `1200` | sentence-boundary cut for long replies |
+| (edit the file) | `TALK_WAKE` | `off` | `on` = wake word "hey claudia" (Linux, needs the venv from README "Wake word"); `TALK_WAKE_WORD`, `TALK_WAKE_MODEL` (`hey_jarvis` stand-in), `TALK_WAKE_THRESHOLD` 0.5, `TALK_WAKE_FOLLOWUP_S` 6, `TALK_WAKE_SILENCE_MS` 1200, `TALK_WAKE_RMS` 0.01 |
 
 Example, English defaults with models elsewhere:
 

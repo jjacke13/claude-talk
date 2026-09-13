@@ -4,7 +4,7 @@
 
 ## Shape (inside claude-talk, not a separate plugin)
 
-- `TALK_WAKE=on|off` (default off), `TALK_WAKE_WORD=claudia`, `TALK_WAKE_MODEL=<path>.onnx`.
+- `TALK_WAKE=on|off` (default off), `TALK_WAKE_WORD=hey claudia`, `TALK_WAKE_MODEL=<path>.onnx`.
 - `wake.ts` (server-side, like `hold.ts`): when on, spawn a detector process reading the mic
   continuously; on detection → play a short "listening" tone (piper says nothing; a 50 ms beep
   from `bin/say` is enough), record until silence, transcribe, `markSpoken()`, `notify(text)`.
@@ -53,7 +53,7 @@ Steps, in order:
 4. **Validate the chain with "hey jarvis"** end to end in a live session.
 5. **Train "Claudia"**: `bin/wake-train` — piper renders "Claudia" across all voices in `models/`
    × speeds (+ negatives: other names, room noise), openwakeword training → `models/claudia.onnx`,
-   shipped in the repo. Switch `TALK_WAKE_WORD=claudia`.
+   shipped in the repo. Switch `TALK_WAKE_MODEL=models/hey_claudia.onnx` (`TALK_WAKE_WORD` is already `hey claudia`).
 6. Config: `TALK_WAKE=on|off` (off), `TALK_WAKE_WORD`, `TALK_WAKE_MODEL`, `TALK_WAKE_FOLLOWUP_S`,
    `TALK_WAKE_SILENCE_MS`; `/talk:configure wake on|off`, `wakeword <name>`, `followup <s>`.
    Docs: README + AGENTS.md (Windows: mic via sounddevice — untested).

@@ -12,6 +12,7 @@ import { homedir } from 'os'
 import { join } from 'path'
 import { sortInbox } from './talk.ts'
 import { startHold } from './hold.ts'
+import { startWake } from './wake.ts'
 import { enqueueSpeech, loadConfig, noteSpoken } from './voice.ts'
 import { sanitizeForSpeech } from './talk.ts'
 
@@ -97,6 +98,7 @@ async function sweep(): Promise<void> {
 await sweep()
 const poller = setInterval(() => void sweep(), 500)
 startHold(loadConfig(), notify)   // hold TALK_KEY anywhere → transcript straight into the session
+startWake(loadConfig(), notify)   // TALK_WAKE=on: say the wake word instead (wake.ts)
 log(`ready; inbox ${INBOX}`)
 
 let shuttingDown = false

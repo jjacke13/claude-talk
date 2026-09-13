@@ -31,12 +31,12 @@ export function keyboardDevices(): string[] {
 }
 
 // Only one server per machine may own the key (two sessions would both answer).
-function takeLock(): boolean {
+export function takeLock(lock = LOCK): boolean {
   try {
-    const pid = Number(readFileSync(LOCK, 'utf8'))
+    const pid = Number(readFileSync(lock, 'utf8'))
     if (pid && pid !== process.pid) { try { process.kill(pid, 0); return false } catch {} }   // alive → not ours
   } catch {}
-  writeFileSync(LOCK, String(process.pid))
+  writeFileSync(lock, String(process.pid))
   return true
 }
 

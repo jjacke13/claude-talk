@@ -80,8 +80,20 @@ multilingual whisper model (`ggml-base.bin`, not `*.en.bin`) and a matching pipe
 | `bin/tts out.ogg "text"` | render ogg/opus + print duration — for SimpleX/Telegram voice bubbles |
 | `bin/speak-last` | the Stop hook (reads hook JSON on stdin) |
 | `bin/wake-check.py [s]` | wake-word runtime proof: listens `s` seconds, prints max `hey_jarvis` score |
+| `bin/wake-listen` | the detector process (Python): mic → openwakeword → one `<model> <score>` line per detection |
+| `bin/wake-detector` | runs `wake-listen` inside the nix dev shell + venv; what `wake.ts` spawns |
 
-## Wake word (in progress — runtime only so far)
+## Wake word — "hey claudia" (in progress: works with the stand-in model, not yet validated live)
+
+`TALK_WAKE=on` and the server (`wake.ts`) keeps a detector on the mic. Say **"hey claudia"** →
+current speech stops, a short beep, then it records until you pause (`TALK_WAKE_SILENCE_MS`,
+1200) or 20 s, transcribes, and the text lands in the session like the hold key. After Claudia
+answers aloud, a **follow-up window** (`TALK_WAKE_FOLLOWUP_S`, 6) takes the next thing you say
+without the wake word; silence closes it. Until `models/hey_claudia.onnx` is trained, the prebuilt
+`hey_jarvis` model is the stand-in: say "hey jarvis". Keys: `TALK_WAKE_WORD` (what you say),
+`TALK_WAKE_MODEL` (prebuilt name or `.onnx` path), `TALK_WAKE_THRESHOLD` (0.5),
+`TALK_WAKE_RMS` (0.01 — mic level that counts as speech; `talk.log` prints each capture's level
+trace to tune it). Linux only for now; one server per machine owns it (`wake.lock`).
 
 nixpkgs has no `openwakeword`, so the split is: every binary from nixpkgs (the dev shell's
 `python3` carries `onnxruntime numpy scipy tqdm requests sounddevice`), and only the pure-Python
