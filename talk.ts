@@ -36,6 +36,7 @@ export function defaultsFor(platform: string) {
     TALK_WAKE_FOLLOWUP_S: '6',      // seconds after Claudia stops talking during which no wake word is needed
     TALK_WAKE_SILENCE_MS: '1200',   // this much quiet after speech ends the utterance
     TALK_WAKE_RMS: '0.01',          // mic RMS (0–1) that counts as speech; laptop mic floor is ~0.002
+    TALK_WAKE_BARGEIN: 'off',       // on = the wake word also interrupts Claudia mid-sentence (her own voice can trigger it)
     ...(AUDIO_DEFAULTS[platform] ?? AUDIO_DEFAULTS.other!),
   }
 }

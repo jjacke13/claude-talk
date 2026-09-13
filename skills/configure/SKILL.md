@@ -49,6 +49,7 @@ Keys and defaults:
 | `TALK_WAKE_WORD` | `hey claudia` | what the user says — shown in logs/prompts; the model decides what is heard |
 | `TALK_WAKE_MODEL` | `hey_claudia` | bare name = `<plugin-root>/models/<name>.onnx`; or an openwakeword prebuilt name (`hey_jarvis`), or a path |
 | `TALK_WAKE_FOLLOWUP_S` | `6` | seconds after Claudia stops speaking in which the next utterance needs no wake word |
+| `TALK_WAKE_BARGEIN` | `off` | `on` = the wake word also cuts Claudia off mid-sentence (her own voice can trigger the model — the talk key always interrupts) |
 | `TALK_WAKE_THRESHOLD` · `TALK_WAKE_SILENCE_MS` · `TALK_WAKE_RMS` | `0.5` · `1200` · `0.01` | detector score; quiet that ends an utterance; mic RMS that counts as speech (edit the file directly) |
 
 ---
@@ -61,13 +62,13 @@ Keys and defaults:
 2. `which whisper-cli piper pw-record pw-play ffmpeg` — report what's missing.
 3. `test -f` the effective `TALK_MODEL` and `TALK_VOICE` (expand `~`); if a file is missing, list candidates:
    `find ~/.hermes/models <state-dir>/models -maxdepth 3 \( -name 'ggml-*.bin' -o -name '*.onnx' \) 2>/dev/null`
-4. Wake word: show `TALK_WAKE`, `TALK_WAKE_WORD`, `TALK_WAKE_MODEL`, `TALK_WAKE_FOLLOWUP_S`, and whether the runtime
+4. Wake word: show `TALK_WAKE`, `TALK_WAKE_WORD`, `TALK_WAKE_MODEL`, `TALK_WAKE_FOLLOWUP_S`, `TALK_WAKE_BARGEIN`, and whether the runtime
    exists: `test -x <state-dir>/wake/venv/bin/python` (absent → "wake word runtime not set up: see README 'Wake word'").
    If `TALK_WAKE_MODEL` is a bare name, `test -f <plugin-root>/models/<name>.onnx`.
 5. Remind: push-to-talk is `bun <plugin-root>/bin/talk` (or `talk` if on PATH); replies are spoken per `TALK_SPEAK`;
    with `TALK_WAKE=on`, saying the wake word does the same as the key.
 
-### `lang <code>` · `model <path>` · `voice <path>` · `speak mirror|on|off` · `reply voice|both` · `player <cmd>` · `max <chars>` · `wake on|off` · `wakeword <name>` · `wakemodel <path>` · `followup <s>`
+### `lang <code>` · `model <path>` · `voice <path>` · `speak mirror|on|off` · `reply voice|both` · `player <cmd>` · `max <chars>` · `wake on|off` · `wakeword <name>` · `wakemodel <path>` · `followup <s>` · `bargein on|off`
 
 Set the matching key (`TALK_LANG`, `TALK_MODEL`, `TALK_VOICE`, `TALK_SPEAK`, `TALK_PLAYER`, `TALK_RECORDER`, `TALK_KEY`, `TALK_SPEED`, `TALK_NARRATE`, `TALK_REPLY`,
 `TALK_MAX_SPEAK_CHARS`, `TALK_WAKE`, `TALK_WAKE_WORD`, `TALK_WAKE_MODEL`, `TALK_WAKE_FOLLOWUP_S`). Keep other lines. Create the directory with `mkdir -p` if needed.

@@ -114,7 +114,9 @@ mic (`wake.lock`), same as the key.
 **Gotchas.**
 - **Claudia must never say the wake word aloud** — the detector hears the speaker, and it will
   trigger on her own voice (live-validated: it did). The session instructions tell her; do not ask
-  her to "say hey claudia".
+  her to "say hey claudia". Worse: the model was trained on her own piper voice and fires on
+  ordinary sentences she speaks (0.99 live). So detections while she speaks are IGNORED by default;
+  `TALK_WAKE_BARGEIN=on` re-enables voice barge-in (the talk key always interrupts).
 - Each capture logs a `rms‰` level trace to `talk.log`; if utterances end too early or never start,
   tune `TALK_WAKE_RMS` (0.01 = speech; this laptop's mic floor is ~0.002) from that trace.
 - Footprint of the detector process: ~190 MB RSS, ~10 % of one core (measured after 60 s).

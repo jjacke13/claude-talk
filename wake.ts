@@ -112,6 +112,9 @@ export function startWake(cfg: Config, onText: (text: string) => void): void {
 
   async function onDetect(line: string): Promise<void> {
     if (state === 'listening') return          // already recording the user
+    // The model was trained on the very piper voice Claudia speaks with and fires on her own
+    // sentences (0.99, live 2026-09-13). Barge-in by voice is therefore opt-in; the key still interrupts.
+    if (cfg.TALK_WAKE_BARGEIN !== 'on' && alive(SAY_PID)) { log(`wake word ignored while speaking (${line})`); return }
     if (cur) cur.aborted = true                // a follow-up window was open: this is a fresh turn instead
     state = 'listening'
     const cap = cur = { aborted: false }
