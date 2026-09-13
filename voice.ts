@@ -1,7 +1,7 @@
 // Side-effecting voice plumbing shared by the bin/ scripts: config from disk+env, piper
 // synthesis (raw s16 mono at the voice's sample rate), playback, opus rendering, recording,
 // whisper transcription, and the inbox drop. Pure logic lives in talk.ts.
-import { appendFileSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs'
+import { appendFileSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { resolveConfig, splitCmd, type Config } from './talk.ts'
@@ -15,8 +15,12 @@ export const LOG_FILE = join(STATE_DIR, 'talk.log')
 try { mkdirSync(INBOX, { recursive: true }) } catch {}   // every script may run before the server ever did
 
 // stderr for the terminal, talk.log for the detached hook path (whose stderr nobody sees).
+const LOG_MAX = 1 << 20   // ponytail: rotate once at 1 MB (keep .1), enough history for a bug report
 export const log = (line: string) => {
   process.stderr.write(`talk: ${line}\n`)
+  try {
+    if (statSync(LOG_FILE).size > LOG_MAX) renameSync(LOG_FILE, LOG_FILE + '.1')
+  } catch {}
   try { appendFileSync(LOG_FILE, `${new Date().toISOString()} ${line}\n`) } catch {}
 }
 
