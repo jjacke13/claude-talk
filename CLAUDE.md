@@ -83,3 +83,6 @@ PreToolUse narration opt-in `TALK_NARRATE`; `TALK_REPLY=voice` → channel meta 
 - **0.2.1:** wake detections while `say.pid` is alive are ignored unless `TALK_WAKE_BARGEIN=on` —
   the hey_claudia model fires on Claudia's own sentences (same piper voice in training, 0.99 live).
   Proper fix later: retrain with many Cori/Ryan-voiced sentences as negatives (bin/wake-train).
+- **0.2.2:** a wake/follow-up capture is dropped the moment `say.pid` comes alive — otherwise
+  Claudia's reply to a key turn (or after a false wake) is recorded and transcribed as the user
+  (live 2026-09-13: her own sentence came back as a channel message).

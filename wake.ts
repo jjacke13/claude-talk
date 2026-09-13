@@ -25,7 +25,7 @@ const CAP_MS = 20_000, POLL_MS = 100, SAY_POLL_MS = 300, RESTART_AFTER_MS = 60_0
 const GRACE_MS = 500   // the beep's echo and the wake word's tail land here: recorded, but not counted as speech
 
 type State = 'idle' | 'listening' | 'followup'
-type Capture = { aborted: boolean }
+type Capture = { aborted: boolean; claudia?: boolean }
 // A spoken turn happened (wake word here, or the hold key via server.ts): when Claudia's answer
 // ends, open the follow-up window. Module-level so hold.ts's callback can arm it without a handle.
 let armed = false
@@ -76,6 +76,9 @@ export function startWake(cfg: Config, onText: (text: string) => void): void {
     const trace: number[] = []   // per-poll RMS ×1000, logged at the end: the calibration aid for TALK_WAKE_RMS
     while (!why && !cap.aborted) {
       await Bun.sleep(POLL_MS)
+      // Claudia started talking mid-capture (a reply to a key turn, or a false wake): the mic
+      // would record HER — drop the capture instead of transcribing her as the user (live 2026-09-13).
+      if (alive(SAY_PID)) { cap.claudia = true; break }
       try {
         if (fd < 0) fd = openSync(wav + '.raw', 'r')
         const n = readSync(fd, buf, 0, buf.length, off); off += n
@@ -90,14 +93,15 @@ export function startWake(cfg: Config, onText: (text: string) => void): void {
     if (fd >= 0) closeSync(fd)
     await stopRecording(r, wav)
     rec = undefined
-    log(`capture ${why ?? 'aborted'}: rms‰ ${trace.join(' ')}`)
-    if (why === 'nospeech' || cap.aborted) { rm(wav); return }
+    log(`capture ${cap.claudia ? 'dropped (Claudia speaking)' : why ?? 'aborted'}: rms‰ ${trace.join(' ')}`)
+    if (why === 'nospeech' || cap.aborted || cap.claudia) { rm(wav); return }
     return wav
   }
 
   async function turn(o: ListenOpts, cap: Capture, onSpeech?: () => void): Promise<void> {
     const wav = await capture(o, cap, onSpeech)
     if (cap.aborted) return   // whoever cancelled us already moved `state` on
+    if (cap.claudia) { state = 'idle'; cur = undefined; return }   // `armed` untouched: her speech ending may open a follow-up
     try {
       if (!wav) { armed = false; log(state === 'followup' ? 'follow-up closed (silence)' : '(nothing heard)'); return }
       const text = await transcribe(cfg, wav)
