@@ -15,7 +15,8 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { takeLock } from './hold.ts'
 import { beepPcm, listenDone, listenStart, listenStep, rms, splitCmd, type Config, type ListenOpts } from './talk.ts'
-import { LOG_FILE, SAY_PID, STATE_DIR, log, markSpoken, startRecording, stopRecording, transcribe, voiceRate } from './voice.ts'
+import { uiListening } from './ui.ts'
+import { LOG_FILE, SAY_PID, STATE_DIR, alive, log, markSpoken, startRecording, stopRecording, transcribe, voiceRate } from './voice.ts'
 
 const LOCK = join(STATE_DIR, 'wake.lock')
 const VENV_PY = join(STATE_DIR, 'wake', 'venv', 'bin', 'python')
@@ -43,10 +44,6 @@ export function modelArg(v: string): string {
   if (existsSync(shipped)) return shipped
   if (v === 'hey_claudia') { log(`${shipped} missing — using the prebuilt hey_jarvis (say "hey jarvis")`); return 'hey_jarvis' }
   return v
-}
-function alive(pidFile: string): boolean {
-  try { const pid = Number(readFileSync(pidFile, 'utf8')); if (pid > 0) { process.kill(pid, 0); return true } } catch {}
-  return false
 }
 
 export function startWake(cfg: Config, onText: (text: string) => void): void {
@@ -123,6 +120,7 @@ export function startWake(cfg: Config, onText: (text: string) => void): void {
     state = 'listening'
     const cap = cur = { aborted: false }
     log(`wake word heard (${line})`)
+    uiListening('wake')
     try { const pid = Number(readFileSync(SAY_PID, 'utf8')); if (pid > 0) process.kill(pid, 'SIGTERM') } catch {}   // stop talking, the user is
     try { await Bun.spawn(splitCmd(cfg.TALK_PLAYER, { rate: String(rate) }), { stdin: new Blob([tone]), stdout: 'ignore', stderr: 'ignore' }).exited } catch (e) { log(`beep failed: ${e}`) }
     log('listening…')

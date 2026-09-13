@@ -122,6 +122,12 @@ export async function stopRecording(rec: ReturnType<typeof startRecording>, wav:
   wrapWav(wav + '.raw', wav)
 }
 
+// Is the process named in a pid file (say.pid: the current speaker) still running?
+export function alive(pidFile: string): boolean {
+  try { const pid = Number(readFileSync(pidFile, 'utf8')); if (pid > 0) { process.kill(pid, 0); return true } } catch {}
+  return false
+}
+
 // Queue speech behind whatever `say` is still playing (or cut it off when interrupt=true).
 // Detached: the caller (a hook or the MCP server) never waits for the audio.
 export function enqueueSpeech(text: string, interrupt = false): number {

@@ -80,6 +80,7 @@ moves the directory). Write it directly or, inside a session, use `/talk:configu
 | `player <cmd>` | `TALK_PLAYER` | PipeWire on Linux, SoX `play` elsewhere | argv template, `{rate}` placeholder, raw s16 mono on stdin |
 | `recorder <cmd>` | `TALK_RECORDER` | PipeWire on Linux, SoX `rec` elsewhere | argv template, must write raw s16le 16 kHz mono to `{raw}` |
 | `max <chars>` | `TALK_MAX_SPEAK_CHARS` | `1200` | sentence-boundary cut for long replies |
+| `ui on\|off` | `TALK_UI` | `off` | companion page (orb + transcript) at `http://127.0.0.1:7590` (`TALK_UI_PORT`); loopback only; next launch |
 
 Example, English defaults with models elsewhere:
 

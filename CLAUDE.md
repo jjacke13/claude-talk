@@ -71,6 +71,15 @@ PreToolUse narration opt-in `TALK_NARRATE`; `TALK_REPLY=voice` → channel meta 
   Untested by unit test (module state, no observer); verified by reading the poller path. Hold key pressed DURING a follow-up
   window: `cancelFollowUp()` (wake.ts export, passed to startHold's `onPress` from server.ts — hold.ts must not import wake.ts,
   wake.ts imports hold.ts for takeLock) aborts that capture so the utterance is not delivered twice.
+- **Companion UI (2026-09-14, worker on laptop's instruction):** `ui.ts` (pure: `pushEvent` ring of 50, `sseFrame`, `reduceState`
+  idle/listening/thinking/speaking with press|wake|user|speaking|silent|timeout; server: Bun.serve 127.0.0.1:TALK_UI_PORT(7590),
+  GET / = `ui.html` read at startup, /events SSE replays state+context+transcript to late joiners, /state JSON; port busy → log,
+  no UI, server continues) + `ui.html` (vanilla canvas orb, hue per state, ripples/arcs/pulses, transcript on `t`). Emitters
+  `uiListening/uiUser/uiAssistant` are no-ops when TALK_UI≠on: server.ts calls uiUser in notify(), uiAssistant in the speak tool,
+  uiListening('press') from hold's onPress; wake.ts calls uiListening('wake') in onDetect. `alive(pidFile)` moved to voice.ts.
+  "speaking" = say.pid alive (200 ms poll); listening times out 30 s, thinking 120 s (text-only answers). Context % = newest
+  `context-*` file in the state dir (10 s poll). Tested with a throwaway emitter + Chrome at 1920 and 960 wide, NOT the live server.
+  Gotcha: `pkill -f <script>` kills the calling shell too (pattern matches it) — use `pkill -f "bun [/]tmp.*name"`.
 - Not done: Vaios's real voice against hey_claudia.onnx (only synthetic voices so far — if it misses, lower TALK_WAKE_THRESHOLD or
   add voices to wake/voices and retrain), Greek voice download, VAD, streaming (needs Agent SDK/hades), SimpleX wiring, Windows wake.
 

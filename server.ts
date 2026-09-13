@@ -13,6 +13,7 @@ import { join } from 'path'
 import { sortInbox } from './talk.ts'
 import { startHold } from './hold.ts'
 import { armFollowUp, cancelFollowUp, startWake } from './wake.ts'
+import { startUi, uiAssistant, uiListening, uiUser } from './ui.ts'
 import { enqueueSpeech, loadConfig, noteSpoken } from './voice.ts'
 import { sanitizeForSpeech } from './talk.ts'
 
@@ -25,6 +26,7 @@ const log = (line: string) => process.stderr.write(`talk: ${line}\n`)
 function notify(text: string): void {
   // TALK_REPLY=voice → meta reply="voice": Claude answers with the speak tool only (see instructions).
   const reply = loadConfig().TALK_REPLY === 'voice' ? 'voice' : 'both'
+  uiUser(text)
   mcp.notification({ method: 'notifications/claude/channel', params: { content: text, meta: { ts: new Date().toISOString(), reply } } })
     .catch(e => log(`failed to deliver to Claude: ${e}`))
 }
@@ -80,6 +82,7 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
     const text = sanitizeForSpeech(raw, 600)
     if (!text) return { content: [{ type: 'text', text: 'nothing speakable' }] }
     noteSpoken(text)
+    uiAssistant(text)
     enqueueSpeech(text)
     return { content: [{ type: 'text', text: 'speaking' }] }
   } catch (e) {
@@ -99,8 +102,9 @@ await sweep()
 const poller = setInterval(() => void sweep(), 500)
 // hold TALK_KEY anywhere → transcript straight into the session. A spoken turn arms the wake follow-up
 // window; pressing the key while one is open hands the mic to the key (no duplicate turn).
-startHold(loadConfig(), t => { armFollowUp(); notify(t) }, undefined, cancelFollowUp)
+startHold(loadConfig(), t => { armFollowUp(); notify(t) }, undefined, () => { cancelFollowUp(); uiListening('press') })
 startWake(loadConfig(), notify)   // TALK_WAKE=on: say the wake word instead (wake.ts)
+startUi(loadConfig())             // TALK_UI=on: companion page on 127.0.0.1:TALK_UI_PORT (ui.ts)
 log(`ready; inbox ${INBOX}`)
 
 let shuttingDown = false

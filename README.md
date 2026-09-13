@@ -82,6 +82,7 @@ multilingual whisper model (`ggml-base.bin`, not `*.en.bin`) and a matching pipe
 | `bin/wake-check.py [s] [model]` | listens `s` seconds, prints the max score of `model` (default `hey_jarvis`; e.g. `models/hey_claudia.onnx`) |
 | `bin/wake-listen` | the detector process (Python): mic → openwakeword → one `<model> <score>` line per detection |
 | `bin/wake-detector` | runs `wake-listen` inside the nix dev shell + venv; what `wake.ts` spawns |
+| `ui.ts` + `ui.html` | companion page server (TALK_UI=on): SSE events, orb page |
 | `bin/wake-train` | trains `models/hey_claudia.onnx` from piper voices (CPU, ~20 min); see "Wake word" |
 
 ## Wake word — "hey claudia"
@@ -136,6 +137,19 @@ from [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices), ~75 MB
 own feature extractor and fits a small MLP written as ONNX. Validation with piper through the speaker:
 silence 0.016, "hey claudia" 0.998, "hey jarvis" 0.105, "hey claude" 0.036 (threshold 0.5). Trained on
 synthetic voices only — if your voice scores low, lower `TALK_WAKE_THRESHOLD` or retrain with more voices.
+
+## Companion UI (optional)
+
+`/talk:configure ui on` (`TALK_UI=on`), relaunch the session, open **http://127.0.0.1:7590** in a browser
+next to the terminal (`TALK_UI_PORT` to move it; loopback only, no external assets, no dependencies).
+One big orb mirrors the conversation — breathing when idle, ripples while listening (key held or
+wake word heard), shimmering arcs while Claude thinks, pulsing while she speaks — with the latest
+line you said (dim) and her latest spoken line (bright) underneath; `t` or the corner button flips
+to the plain transcript (last 50 lines). Corners: clock, state, and the context percentage when a
+`context-*` file exists in the state dir (written by an external Stop hook). `/events` is a
+Server-Sent-Events stream, `/state` a JSON snapshot; the page reconnects by itself and shows
+"offline" while the server is gone. "Speaking" is read from `say.pid` (no audio analysis); only
+what goes through the speak tool is shown as her line — replies spoken by the Stop hook are not.
 
 ## How it works
 
