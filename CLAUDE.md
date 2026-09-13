@@ -52,3 +52,10 @@ PreToolUse narration opt-in `TALK_NARRATE`; `TALK_REPLY=voice` → channel meta 
   Barge-in (wake word while Claudia speaks) NOT validated — two synthetic voices on one speaker masked it; step 4 (live).
 - Not done: step 4 live validation, step 5 training `models/hey_claudia.onnx`, step 6 `/talk:configure wake …`,
   Greek voice download, VAD, streaming (needs Agent SDK/hades), SimpleX wiring.
+
+## Wake word — live findings (2026-09-13, main session)
+- QUEUED FIX: follow-up window opens only after a wake-word turn (`armed` set in wake.ts `turn()`).
+  It must open after ANY spoken turn — hold-to-talk too. Plan: hoist `armed` to module scope,
+  `export function armFollowUp()`, and in server.ts wrap the hold callback: `startHold(cfg, t => { armFollowUp(); notify(t) })`.
+- From across the room the detector hears the wake word but the sentence RMS sits at ~5‰ (< TALK_WAKE_RMS 10‰) → "nothing heard". Either lower TALK_WAKE_RMS to ~0.006 or speak up after the beep; floor is ~2‰.
+- Claudia must never SAY the wake word: her own voice through the speaker triggers barge-in (0.94).
