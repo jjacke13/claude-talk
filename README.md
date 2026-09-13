@@ -60,6 +60,10 @@ replies are cut at a sentence boundary (`TALK_MAX_SPEAK_CHARS`, default 1200). M
 progress comes from the `speak` tool Claude calls in its own words; `TALK_NARRATE=on` adds a
 one-line description of each tool call. Speech queues in order; pressing the talk key stops it.
 
+`TALK_REPLY=voice` (`/talk:configure reply voice`) turns it into a pure conversation: Claude answers
+only through the `speak` tool and leaves just a marker line in the terminal; `both` (default)
+keeps the written reply for details worth reading.
+
 ## Configure
 
 `/talk:configure` — status; `lang el`, `model <ggml>`, `voice <onnx>`, `speak on|off|mirror`,

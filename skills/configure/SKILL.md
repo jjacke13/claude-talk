@@ -42,6 +42,7 @@ Keys and defaults:
 | `TALK_KEY` | `KEY_RIGHTALT` | hold-to-talk key (name or evdev code) |
 | `TALK_SPEED` | `1.0` | speech rate: 1.3 = faster, 0.8 = slower (0.5–3) |
 | `TALK_NARRATE` | `off` | `on` = also speak a one-line description of each tool call as it starts |
+| `TALK_REPLY` | `both` | `voice` = purely spoken conversation: Claude answers with the speak tool only and writes just a marker line in the terminal |
 | `TALK_MAX_SPEAK_CHARS` | `1200` | cut longer replies at a sentence boundary |
 
 ---
@@ -56,9 +57,9 @@ Keys and defaults:
    `find ~/.hermes/models <state-dir>/models -maxdepth 3 \( -name 'ggml-*.bin' -o -name '*.onnx' \) 2>/dev/null`
 4. Remind: push-to-talk is `bun <plugin-root>/bin/talk` (or `talk` if on PATH); replies are spoken per `TALK_SPEAK`.
 
-### `lang <code>` · `model <path>` · `voice <path>` · `speak mirror|on|off` · `player <cmd>` · `max <chars>`
+### `lang <code>` · `model <path>` · `voice <path>` · `speak mirror|on|off` · `reply voice|both` · `player <cmd>` · `max <chars>`
 
-Set the matching key (`TALK_LANG`, `TALK_MODEL`, `TALK_VOICE`, `TALK_SPEAK`, `TALK_PLAYER`, `TALK_RECORDER`, `TALK_KEY`, `TALK_SPEED`, `TALK_NARRATE`,
+Set the matching key (`TALK_LANG`, `TALK_MODEL`, `TALK_VOICE`, `TALK_SPEAK`, `TALK_PLAYER`, `TALK_RECORDER`, `TALK_KEY`, `TALK_SPEED`, `TALK_NARRATE`, `TALK_REPLY`,
 `TALK_MAX_SPEAK_CHARS`). Keep other lines. Create the directory with `mkdir -p` if needed.
 For `model`/`voice`, `test -f` the path first and refuse with a clear message if absent
 (a non-English model needs a multilingual ggml, e.g. `ggml-base.bin`, not `*.en.bin`).
