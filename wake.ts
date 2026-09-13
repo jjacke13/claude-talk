@@ -30,6 +30,10 @@ type Capture = { aborted: boolean }
 // ends, open the follow-up window. Module-level so hold.ts's callback can arm it without a handle.
 let armed = false
 export function armFollowUp(): void { armed = true }
+// The hold key pressed during an open follow-up window: drop that capture, the key's recorder takes
+// over (both hear the same mic; without this the utterance would arrive twice). No-op otherwise.
+let cancelCurrent: () => void = () => {}
+export function cancelFollowUp(): void { cancelCurrent() }
 const rm = (wav: string) => { for (const f of [wav, wav + '.raw']) try { unlinkSync(f) } catch {} }
 // A bare name is the plugin's models/<name>.onnx when that exists; otherwise it reaches openwakeword
 // as-is (a prebuilt name such as hey_jarvis, or a path). hey_jarvis is the fallback if ours is missing.
@@ -125,7 +129,9 @@ export function startWake(cfg: Config, onText: (text: string) => void): void {
     await turn({ silenceMs, speechWithinMs: followupMs, capMs: CAP_MS }, cap, () => { state = 'listening'; log('follow-up: recording…') })
   }
 
-  // Claudia's speech = say.pid alive. Its end (after a wake turn) opens the window; a new start closes it.
+  cancelCurrent = () => { if (state === 'followup' && cur) { cur.aborted = true; state = 'idle'; log('follow-up closed: hold key') } }
+
+  // Claudia's speech = say.pid alive. Its end (after a spoken turn) opens the window; a new start closes it.
   let speaking = alive(SAY_PID)
   setInterval(() => {
     const now = alive(SAY_PID)

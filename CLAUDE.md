@@ -68,8 +68,9 @@ PreToolUse narration opt-in `TALK_NARRATE`; `TALK_REPLY=voice` → channel meta 
   Background Bash tasks in this harness got killed mid-training twice → long jobs run `setsid nohup … &` + Monitor on a log.
   **Follow-up window after ANY spoken turn** (fix 2026-09-13): `armed` is module-level in wake.ts, `armFollowUp()` exported;
   server.ts wraps the hold callback `t => { armFollowUp(); notify(t) }`. Poller unchanged: say.pid alive→gone while idle+armed → window.
-  Untested by unit test (module state, no observer); verified by reading the poller path. Known overlap: hold key pressed DURING a
-  follow-up window = both recorders hear the same speech → possible duplicate turn (pre-existing, now likelier; not fixed).
+  Untested by unit test (module state, no observer); verified by reading the poller path. Hold key pressed DURING a follow-up
+  window: `cancelFollowUp()` (wake.ts export, passed to startHold's `onPress` from server.ts — hold.ts must not import wake.ts,
+  wake.ts imports hold.ts for takeLock) aborts that capture so the utterance is not delivered twice.
 - Not done: Vaios's real voice against hey_claudia.onnx (only synthetic voices so far — if it misses, lower TALK_WAKE_THRESHOLD or
   add voices to wake/voices and retrain), Greek voice download, VAD, streaming (needs Agent SDK/hades), SimpleX wiring, Windows wake.
 

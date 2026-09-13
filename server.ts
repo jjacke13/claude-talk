@@ -12,7 +12,7 @@ import { homedir } from 'os'
 import { join } from 'path'
 import { sortInbox } from './talk.ts'
 import { startHold } from './hold.ts'
-import { armFollowUp, startWake } from './wake.ts'
+import { armFollowUp, cancelFollowUp, startWake } from './wake.ts'
 import { enqueueSpeech, loadConfig, noteSpoken } from './voice.ts'
 import { sanitizeForSpeech } from './talk.ts'
 
@@ -97,7 +97,9 @@ async function sweep(): Promise<void> {
 }
 await sweep()
 const poller = setInterval(() => void sweep(), 500)
-startHold(loadConfig(), t => { armFollowUp(); notify(t) })   // hold TALK_KEY anywhere → transcript straight into the session; a spoken turn arms the wake follow-up window
+// hold TALK_KEY anywhere → transcript straight into the session. A spoken turn arms the wake follow-up
+// window; pressing the key while one is open hands the mic to the key (no duplicate turn).
+startHold(loadConfig(), t => { armFollowUp(); notify(t) }, undefined, cancelFollowUp)
 startWake(loadConfig(), notify)   // TALK_WAKE=on: say the wake word instead (wake.ts)
 log(`ready; inbox ${INBOX}`)
 

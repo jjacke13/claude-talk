@@ -40,7 +40,8 @@ export function takeLock(lock = LOCK): boolean {
   return true
 }
 
-export function startHold(cfg: Config, onText: (text: string) => void, devices?: string[]): void {
+// onPress runs at each key press before recording starts (server.ts uses it to cancel wake.ts's follow-up window).
+export function startHold(cfg: Config, onText: (text: string) => void, devices?: string[], onPress?: () => void): void {
   const keyName = cfg.TALK_KEY
   const win = process.platform === 'win32'
   const keyCode = (win ? VKEYS[keyName] : KEYS[keyName]) ?? Number(keyName)
@@ -50,7 +51,7 @@ export function startHold(cfg: Config, onText: (text: string) => void, devices?:
   if (!takeLock()) {
     // A previous session's server is still shutting down (resume/relaunch race): wait for it.
     log('hold-to-talk waiting: another talk server owns the key')
-    const t = setInterval(() => { if (takeLock()) { clearInterval(t); startHold(cfg, onText, devices) } }, 2000)
+    const t = setInterval(() => { if (takeLock()) { clearInterval(t); startHold(cfg, onText, devices, onPress) } }, 2000)
     return
   }
 
@@ -58,6 +59,7 @@ export function startHold(cfg: Config, onText: (text: string) => void, devices?:
   let wav = '', t0 = 0, busy = false
   async function onKey(value: number): Promise<void> {
     if (value === PRESS && !rec && !busy) {
+      onPress?.()
       try { process.kill(Number(readSync(SAY_PID, 'utf8')), 'SIGTERM') } catch {}   // stop talking, the user is
       wav = join(tmpdir(), `talk-hold-${process.pid}.wav`)
       rec = startRecording(cfg, wav); t0 = Date.now()
