@@ -4,7 +4,7 @@
 //
 // States (`state` below), one at a time:
 //   idle       detector running, nothing recording. Wake word → listening. Claudia's speech
-//              ending after a wake turn (`armed`) → followup.
+//              ending after any spoken turn (`armed`: wake word or hold key) → followup.
 //   listening  recorder on; ends after TALK_WAKE_SILENCE_MS of quiet once speech was heard, or
 //              at CAP_MS. Then transcribe → onText → idle (armed).
 //   followup   recorder on for TALK_WAKE_FOLLOWUP_S with no beep; speech within it → listening
@@ -26,6 +26,10 @@ const GRACE_MS = 500   // the beep's echo and the wake word's tail land here: re
 
 type State = 'idle' | 'listening' | 'followup'
 type Capture = { aborted: boolean }
+// A spoken turn happened (wake word here, or the hold key via server.ts): when Claudia's answer
+// ends, open the follow-up window. Module-level so hold.ts's callback can arm it without a handle.
+let armed = false
+export function armFollowUp(): void { armed = true }
 const rm = (wav: string) => { for (const f of [wav, wav + '.raw']) try { unlinkSync(f) } catch {} }
 // A bare name is the plugin's models/<name>.onnx when that exists; otherwise it reaches openwakeword
 // as-is (a prebuilt name such as hey_jarvis, or a path). hey_jarvis is the fallback if ours is missing.
@@ -55,7 +59,7 @@ export function startWake(cfg: Config, onText: (text: string) => void): void {
   const silenceMs = Number(cfg.TALK_WAKE_SILENCE_MS) || 1200
   const followupMs = (Number(cfg.TALK_WAKE_FOLLOWUP_S) || 6) * 1000
   const rate = voiceRate(cfg.TALK_VOICE), tone = beepPcm(rate)
-  let state: State = 'idle', armed = false, cur: Capture | undefined
+  let state: State = 'idle', cur: Capture | undefined
   let rec: ReturnType<typeof startRecording> | undefined, det: ReturnType<typeof Bun.spawn> | undefined, exiting = false
 
   // Record to a temp WAV while watching the raw stream's RMS; returns the WAV, or nothing when
@@ -97,7 +101,7 @@ export function startWake(cfg: Config, onText: (text: string) => void): void {
       log(`heard: ${text}`)
       markSpoken()
       onText(text)
-      armed = true
+      armFollowUp()
     } catch (e) { log(`transcription failed: ${e}`) }
     finally { if (wav) rm(wav); state = 'idle'; cur = undefined }
   }

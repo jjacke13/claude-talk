@@ -66,6 +66,10 @@ PreToolUse narration opt-in `TALK_NARRATE`; `TALK_REPLY=voice` → channel meta 
   0.998, "hey jarvis" 0.105, "hey claude" 0.036, bare "Claudia" 0.009. (3) cori-high has ~2 s synth latency: a 4.5 s
   wake-check window clips the phrase → flaky 0.00x; use ≥7 s windows in scripted tests. Detector footprint 192 MB RSS, ~10 % core.
   Background Bash tasks in this harness got killed mid-training twice → long jobs run `setsid nohup … &` + Monitor on a log.
+  **Follow-up window after ANY spoken turn** (fix 2026-09-13): `armed` is module-level in wake.ts, `armFollowUp()` exported;
+  server.ts wraps the hold callback `t => { armFollowUp(); notify(t) }`. Poller unchanged: say.pid alive→gone while idle+armed → window.
+  Untested by unit test (module state, no observer); verified by reading the poller path. Known overlap: hold key pressed DURING a
+  follow-up window = both recorders hear the same speech → possible duplicate turn (pre-existing, now likelier; not fixed).
 - Not done: Vaios's real voice against hey_claudia.onnx (only synthetic voices so far — if it misses, lower TALK_WAKE_THRESHOLD or
   add voices to wake/voices and retrain), Greek voice download, VAD, streaming (needs Agent SDK/hades), SimpleX wiring, Windows wake.
 
