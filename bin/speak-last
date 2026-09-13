@@ -2,7 +2,8 @@
 // Stop hook (and PreToolUse when TALK_NARRATE=on): speak the turn's prose that has not been
 // spoken yet. Claude Code appends most in-turn prose to the transcript only at turn end, so
 // timely mid-turn speech comes from the `speak` MCP tool instead; whatever that tool already
-// said is skipped here. Blocks queue behind current speech; a new turn interrupts.
+// said is skipped here — and if it spoke at all this turn, the written reply is not read out.
+// Blocks queue behind current speech; a new turn interrupts.
 import { readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { STATE_DIR, clearSpoken, enqueueSpeech, loadConfig, log, readSpoken, takeSpoken } from '../voice.ts'
@@ -35,7 +36,7 @@ if (!speakThisTurn) process.exit(0)
 
 const spoken = readSpoken()
 const max = Number(cfg.TALK_MAX_SPEAK_CHARS) || 1200
-const parts = state.texts.slice(done).map(t => sanitizeForSpeech(t, max)).filter(t => t && !spoken.has(t))
+const parts = (spoken.size ? [] : state.texts.slice(done)).map(t => sanitizeForSpeech(t, max)).filter(t => t && !spoken.has(t))
 if (event === 'PreToolUse') parts.push(sanitizeForSpeech(toolNarration(String(input.tool_name ?? ''), input.tool_input), max))
 const text = parts.filter(Boolean).join(" ")
 if (event === "Stop") clearSpoken()   // turn is over: forget what the speak tool said

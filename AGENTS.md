@@ -164,6 +164,7 @@ then hold Right Alt and speak. No `input` group step on Windows.
   `Stop` hook is what reads your final reply aloud.
 - For progress **during** a turn, call the plugin's `speak` tool (`mcp__plugin_talk_talk__speak {text}`)
   with one short sentence in your own words before a long step. It plays immediately, queued
-  after whatever is still being spoken, and the Stop hook will not repeat it.
+  after whatever is still being spoken. Once you have used `speak` in a turn, the Stop hook
+  reads nothing: say your answer with `speak`; keep the written reply for details worth reading.
 - Do not narrate every tool call; `TALK_NARRATE=on` exists for users who want that automatically.
 - Speech is only interrupted by the user pressing the talk key.
