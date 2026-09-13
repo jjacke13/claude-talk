@@ -47,7 +47,12 @@ export function startHold(cfg: Config, onText: (text: string) => void, devices?:
   if (!Number.isInteger(keyCode)) { log(`TALK_KEY "${keyName}" unknown — hold-to-talk off`); return }
   devices ??= win ? [] : keyboardDevices()
   if (!win && !devices.length) { log('hold-to-talk off: no keyboard under /dev/input'); return }
-  if (!takeLock()) { log('hold-to-talk off: another talk server owns the key'); return }
+  if (!takeLock()) {
+    // A previous session's server is still shutting down (resume/relaunch race): wait for it.
+    log('hold-to-talk waiting: another talk server owns the key')
+    const t = setInterval(() => { if (takeLock()) { clearInterval(t); startHold(cfg, onText, devices) } }, 2000)
+    return
+  }
 
   let rec: ReturnType<typeof startRecording> | undefined
   let wav = '', t0 = 0, busy = false
