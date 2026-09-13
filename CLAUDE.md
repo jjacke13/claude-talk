@@ -3,7 +3,7 @@
 Local voice for Claude Code: `bin/talk` (pw-record → whisper-cli → inbox drop) → channel
 message `<channel source="plugin:talk:talk">`; `Stop` hook `bin/speak-last` → `bin/say`
 (piper → pw-play) per `TALK_SPEAK` (mirror|on|off). `bin/tts` renders ogg/opus for
-claude-simplex voice bubbles (not wired yet). Built + **LIVE-VALIDATED 2026-09-12** (hold Right Alt → whisper → session → spoken reply). v0.1.13.
+claude-simplex voice bubbles (not wired yet). Built + **LIVE-VALIDATED 2026-09-12** (hold Right Alt → whisper → session → spoken reply). v0.2.0 (wake word merged 2026-09-13).
 **Speak tool** (`mcp__plugin_talk_talk__speak`) = immediate queued speech in my own words — Vaios wants it
 used for anything conversational on spoken turns; Stop hook speaks the final prose ONLY on turns where speak was not used (v0.1.10);
 PreToolUse narration opt-in `TALK_NARRATE`; `TALK_REPLY=voice` → channel meta `reply="voice"` → speak-only answers, marker line in terminal (0.1.11); only the talk-key press interrupts. Voice: Cori high ("Claudia").
