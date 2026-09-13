@@ -1,6 +1,6 @@
 ---
 name: configure
-description: Set up local voice for Claude Code — choose whisper language/model, piper voice, speak mode. Use when the user asks to configure talk/voice, change language or voice, turn spoken replies on/off, or check voice status.
+description: Set up local voice for Claude Code — choose whisper language/model, piper voice, speak mode, wake word. Use when the user asks to configure talk/voice, change language or voice, turn spoken replies on/off, turn the wake word on/off, or check voice status.
 user-invocable: true
 allowed-tools:
   - Read
@@ -17,7 +17,8 @@ allowed-tools:
 # /talk:configure — local voice setup
 
 Writes `KEY=value` lines to `<state-dir>/config`. Scripts read it on every run
-(no restart needed); the server only needs the directory.
+(no restart needed); the server only needs the directory — except the `TALK_WAKE*` keys,
+which the server reads once at start: **wake settings apply at the next launch of Claude Code.**
 
 **Resolve the state directory first:**
 
@@ -44,6 +45,11 @@ Keys and defaults:
 | `TALK_NARRATE` | `off` | `on` = also speak a one-line description of each tool call as it starts |
 | `TALK_REPLY` | `both` | `voice` = purely spoken conversation: Claude answers with the speak tool only and writes just a marker line in the terminal |
 | `TALK_MAX_SPEAK_CHARS` | `1200` | cut longer replies at a sentence boundary |
+| `TALK_WAKE` | `off` | `on` = the server listens for the wake word (Linux; needs the wake venv, see README "Wake word") |
+| `TALK_WAKE_WORD` | `hey claudia` | what the user says — shown in logs/prompts; the model decides what is heard |
+| `TALK_WAKE_MODEL` | `hey_claudia` | bare name = `<plugin-root>/models/<name>.onnx`; or an openwakeword prebuilt name (`hey_jarvis`), or a path |
+| `TALK_WAKE_FOLLOWUP_S` | `6` | seconds after Claudia stops speaking in which the next utterance needs no wake word |
+| `TALK_WAKE_THRESHOLD` · `TALK_WAKE_SILENCE_MS` · `TALK_WAKE_RMS` | `0.5` · `1200` · `0.01` | detector score; quiet that ends an utterance; mic RMS that counts as speech (edit the file directly) |
 
 ---
 
@@ -55,15 +61,22 @@ Keys and defaults:
 2. `which whisper-cli piper pw-record pw-play ffmpeg` — report what's missing.
 3. `test -f` the effective `TALK_MODEL` and `TALK_VOICE` (expand `~`); if a file is missing, list candidates:
    `find ~/.hermes/models <state-dir>/models -maxdepth 3 \( -name 'ggml-*.bin' -o -name '*.onnx' \) 2>/dev/null`
-4. Remind: push-to-talk is `bun <plugin-root>/bin/talk` (or `talk` if on PATH); replies are spoken per `TALK_SPEAK`.
+4. Wake word: show `TALK_WAKE`, `TALK_WAKE_WORD`, `TALK_WAKE_MODEL`, `TALK_WAKE_FOLLOWUP_S`, and whether the runtime
+   exists: `test -x <state-dir>/wake/venv/bin/python` (absent → "wake word runtime not set up: see README 'Wake word'").
+   If `TALK_WAKE_MODEL` is a bare name, `test -f <plugin-root>/models/<name>.onnx`.
+5. Remind: push-to-talk is `bun <plugin-root>/bin/talk` (or `talk` if on PATH); replies are spoken per `TALK_SPEAK`;
+   with `TALK_WAKE=on`, saying the wake word does the same as the key.
 
-### `lang <code>` · `model <path>` · `voice <path>` · `speak mirror|on|off` · `reply voice|both` · `player <cmd>` · `max <chars>`
+### `lang <code>` · `model <path>` · `voice <path>` · `speak mirror|on|off` · `reply voice|both` · `player <cmd>` · `max <chars>` · `wake on|off` · `wakeword <name>` · `wakemodel <path>` · `followup <s>`
 
 Set the matching key (`TALK_LANG`, `TALK_MODEL`, `TALK_VOICE`, `TALK_SPEAK`, `TALK_PLAYER`, `TALK_RECORDER`, `TALK_KEY`, `TALK_SPEED`, `TALK_NARRATE`, `TALK_REPLY`,
-`TALK_MAX_SPEAK_CHARS`). Keep other lines. Create the directory with `mkdir -p` if needed.
+`TALK_MAX_SPEAK_CHARS`, `TALK_WAKE`, `TALK_WAKE_WORD`, `TALK_WAKE_MODEL`, `TALK_WAKE_FOLLOWUP_S`). Keep other lines. Create the directory with `mkdir -p` if needed.
 For `model`/`voice`, `test -f` the path first and refuse with a clear message if absent
 (a non-English model needs a multilingual ggml, e.g. `ggml-base.bin`, not `*.en.bin`).
-Confirm by printing the file.
+For `wake on`, `test -x <state-dir>/wake/venv/bin/python` first; if absent, still write the key but print the
+README "Wake word" setup commands. For `wakemodel`, accept a bare name only if `<plugin-root>/models/<name>.onnx`
+exists or the name is `hey_jarvis`; a path must `test -f`. After any `wake*`/`followup` change say:
+"applies at the next launch of Claude Code". Confirm by printing the file.
 
 ### `voices` — where to get more
 

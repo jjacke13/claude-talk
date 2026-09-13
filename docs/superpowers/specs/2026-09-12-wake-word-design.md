@@ -51,7 +51,7 @@ Steps, in order:
    (RMS, `TALK_WAKE_SILENCE_MS` 1200, cap 20 s), `transcribe`, `markSpoken`, `notify`.
    Follow-up window after the Stop hook / speak tool finishes (watch `say.pid` exit → open window).
 4. **Validate the chain with "hey jarvis"** end to end in a live session.
-5. **Train "Claudia"**: `bin/wake-train` — piper renders "Claudia" across all voices in `models/`
+5. **Train "hey claudia"** (DONE 2026-09-13, own pipeline — no torch; see README "Wake word"): `bin/wake-train` — piper renders "Claudia" across all voices in `models/`
    × speeds (+ negatives: other names, room noise), openwakeword training → `models/claudia.onnx`,
    shipped in the repo. Switch `TALK_WAKE_MODEL=models/hey_claudia.onnx` (`TALK_WAKE_WORD` is already `hey claudia`).
 6. Config: `TALK_WAKE=on|off` (off), `TALK_WAKE_WORD`, `TALK_WAKE_MODEL`, `TALK_WAKE_FOLLOWUP_S`,

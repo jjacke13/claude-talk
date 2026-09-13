@@ -79,36 +79,61 @@ multilingual whisper model (`ggml-base.bin`, not `*.en.bin`) and a matching pipe
 | `bin/say "text"` | speak now |
 | `bin/tts out.ogg "text"` | render ogg/opus + print duration — for SimpleX/Telegram voice bubbles |
 | `bin/speak-last` | the Stop hook (reads hook JSON on stdin) |
-| `bin/wake-check.py [s]` | wake-word runtime proof: listens `s` seconds, prints max `hey_jarvis` score |
+| `bin/wake-check.py [s] [model]` | listens `s` seconds, prints the max score of `model` (default `hey_jarvis`; e.g. `models/hey_claudia.onnx`) |
 | `bin/wake-listen` | the detector process (Python): mic → openwakeword → one `<model> <score>` line per detection |
 | `bin/wake-detector` | runs `wake-listen` inside the nix dev shell + venv; what `wake.ts` spawns |
+| `bin/wake-train` | trains `models/hey_claudia.onnx` from piper voices (CPU, ~20 min); see "Wake word" |
 
-## Wake word — "hey claudia" (in progress: works with the stand-in model, not yet validated live)
+## Wake word — "hey claudia"
 
-`TALK_WAKE=on` and the server (`wake.ts`) keeps a detector on the mic. Say **"hey claudia"** →
-current speech stops, a short beep, then it records until you pause (`TALK_WAKE_SILENCE_MS`,
-1200) or 20 s, transcribes, and the text lands in the session like the hold key. After Claudia
-answers aloud, a **follow-up window** (`TALK_WAKE_FOLLOWUP_S`, 6) takes the next thing you say
-without the wake word; silence closes it. Until `models/hey_claudia.onnx` is trained, the prebuilt
-`hey_jarvis` model is the stand-in: say "hey jarvis". Keys: `TALK_WAKE_WORD` (what you say),
-`TALK_WAKE_MODEL` (prebuilt name or `.onnx` path), `TALK_WAKE_THRESHOLD` (0.5),
-`TALK_WAKE_RMS` (0.01 — mic level that counts as speech; `talk.log` prints each capture's level
-trace to tune it). Linux only for now; one server per machine owns it (`wake.lock`).
+Say **"hey claudia"** instead of holding the key. Linux only for now (Windows/macOS: unsupported —
+the detector wrapper is nix + PipeWire; nothing stops a port, it just has not been done).
 
-nixpkgs has no `openwakeword`, so the split is: every binary from nixpkgs (the dev shell's
-`python3` carries `onnxruntime numpy scipy tqdm requests sounddevice`), and only the pure-Python
-`openwakeword` pip-installed with `--no-deps` into a venv under the talk state dir. One-time setup:
+**Setup (one-time).** nixpkgs has no `openwakeword`, so the split is: every binary from nixpkgs
+(the dev shell's `python3` carries `onnxruntime numpy scipy sounddevice …`), and only the
+pure-Python `openwakeword` pip-installed with `--no-deps` into a venv under the talk state dir:
 
 ```
 nix develop --builders ''            # --builders '' on this laptop: remote builders hang
 python3 -m venv --system-site-packages ~/.claude/channels/talk/wake/venv
 ~/.claude/channels/talk/wake/venv/bin/pip install --no-deps openwakeword
-~/.claude/channels/talk/wake/venv/bin/python bin/wake-check.py 5   # downloads the models once
+~/.claude/channels/talk/wake/venv/bin/python bin/wake-check.py 5 models/hey_claudia.onnx   # say it → score
 ```
 
-The venv only sees the nix packages through the `PYTHONPATH` the dev shell exports, so run it
-from inside `nix develop` (same contract as the other binaries). Mic goes through PortAudio →
-ALSA `default` → PipeWire. Proof: `bin/say "hey jarvis"` while `wake-check.py` listens → 0.998.
+The venv sees the nix packages only through the `PYTHONPATH` the dev shell exports, which is why
+`bin/wake-detector` wraps the detector in `nix develop`. Mic path: PortAudio → ALSA `default` → PipeWire.
+
+**Enable.** `/talk:configure wake on` (or `TALK_WAKE=on` in the config) — applies at the next launch.
+The server then keeps `bin/wake-listen` on the mic. On the wake word: current speech stops, a short
+beep, then it records until you pause (`TALK_WAKE_SILENCE_MS`, 1200 ms) or 20 s, transcribes, and the
+text lands in the session exactly like the hold key. **Follow-up window:** after Claudia finishes
+speaking, for `TALK_WAKE_FOLLOWUP_S` (6) seconds the next thing you say needs no wake word; silence
+closes it, and saying the wake word while she talks cuts her off. One server per machine owns the
+mic (`wake.lock`), same as the key.
+
+**Gotchas.**
+- **Claudia must never say the wake word aloud** — the detector hears the speaker, and it will
+  trigger on her own voice (live-validated: it did). The session instructions tell her; do not ask
+  her to "say hey claudia".
+- Each capture logs a `rms‰` level trace to `talk.log`; if utterances end too early or never start,
+  tune `TALK_WAKE_RMS` (0.01 = speech; this laptop's mic floor is ~0.002) from that trace.
+- Footprint of the detector process: ~190 MB RSS, ~10 % of one core (measured after 60 s).
+
+**Keys.** `TALK_WAKE` (off), `TALK_WAKE_WORD` (`hey claudia` — what you say), `TALK_WAKE_MODEL`
+(`hey_claudia` = the repo's `models/hey_claudia.onnx`; `hey_jarvis` = openwakeword's prebuilt fallback,
+say "hey jarvis"; or any `.onnx` path), `TALK_WAKE_THRESHOLD` (0.5), `TALK_WAKE_FOLLOWUP_S` (6),
+`TALK_WAKE_SILENCE_MS` (1200), `TALK_WAKE_RMS` (0.01).
+
+**The model.** `models/hey_claudia.onnx` (589 KB) is trained by `bin/wake-train`, CPU only, in
+about 20 minutes: piper renders the phrase (spellings "Claudia"/"Cloudia" cover the English and
+the Greek pronunciation) and negatives with every piper voice it finds (yours in
+`<state-dir>/models`, `~/.hermes/models/piper`, plus multi-speaker voices dropped into
+`<state-dir>/wake/voices` — `en_US-libritts_r`, `en_GB-vctk`, `en_US-l2arctic`, `en_US-arctic`
+from [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices), ~75 MB each), augments
+(speed/pitch, noise, reverb, the room's own noise recorded from the mic), embeds with openwakeword's
+own feature extractor and fits a small MLP written as ONNX. Validation with piper through the speaker:
+silence 0.016, "hey claudia" 0.998, "hey jarvis" 0.105, "hey claude" 0.036 (threshold 0.5). Trained on
+synthetic voices only — if your voice scores low, lower `TALK_WAKE_THRESHOLD` or retrain with more voices.
 
 ## How it works
 

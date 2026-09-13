@@ -50,8 +50,24 @@ PreToolUse narration opt-in `TALK_NARRATE`; `TALK_REPLY=voice` → channel meta 
   before speech counts; cori-high piper has ~2 s synth latency before audio (matters for scripted tests); laptop mic floor
   ≈ 0.002 RMS, speaker-fed speech 0.01–0.07; each capture logs its `rms‰` trace to talk.log for tuning.
   Barge-in (wake word while Claudia speaks) NOT validated — two synthetic voices on one speaker masked it; step 4 (live).
-- Not done: step 4 live validation, step 5 training `models/hey_claudia.onnx`, step 6 `/talk:configure wake …`,
-  Greek voice download, VAD, streaming (needs Agent SDK/hades), SimpleX wiring.
+  **Step 4 live-validated by Vaios 2026-09-13** (real voice: detect 0.82–0.94, follow-up, barge-in — it even fired on Claudia
+  saying "hey jarvis" herself → she must never say the wake word aloud). **Steps 5+6 done 2026-09-13**: `bin/wake-train`
+  (no torch: piper API renders in-process with a 1-thread ORT shim, numpy/scipy augmentation, openwakeword's own
+  `AudioFeatures.embed_clips`, sklearn MLP (96,32) → hand-built ONNX Reshape/Gemm/Relu/Sigmoid `[1,16,96]→[1,1]`; flake python
+  gained `scikit-learn onnx`). Voices: 4 local + 4 multi-speaker from HF rhasspy/piper-voices in `~/.claude/channels/talk/wake/voices/`
+  (libritts_r 904 spk, vctk 109, l2arctic 24, arctic 18; ~74 MB each) → 40 speakers/voice, 32k examples, ~20 min CPU
+  (features step dominates; renders cached per voice-chunk in `wake/train/*.npz`). `models/hey_claudia.onnx` 589 KB, git-tracked;
+  DEFAULT TALK_WAKE_MODEL=hey_claudia → wake.ts `modelArg` maps bare name → models/<name>.onnx, hey_jarvis fallback.
+  **Training gotchas paid for:** (1) the official openwakeword trainer needs torch+speechbrain+piper-sample-generator+multi-GB
+  negative features — rejected; (2) v1 scored ~1.0 on ANY live speech although held-out FP was 1.8%: batch features vs streaming
+  mismatch — I had only placed speech flush at the window end and zero-padded (openwakeword's docstring warns streaming melspec
+  diverges on zero padding). Fix = noise bed under every example (never digital silence), positives also as "early" (≥0.7 s
+  before end) and "prefix-cut" negatives, near-misses at random positions. v2 live via speaker: silence 0.016, "hey claudia"
+  0.998, "hey jarvis" 0.105, "hey claude" 0.036, bare "Claudia" 0.009. (3) cori-high has ~2 s synth latency: a 4.5 s
+  wake-check window clips the phrase → flaky 0.00x; use ≥7 s windows in scripted tests. Detector footprint 192 MB RSS, ~10 % core.
+  Background Bash tasks in this harness got killed mid-training twice → long jobs run `setsid nohup … &` + Monitor on a log.
+- Not done: Vaios's real voice against hey_claudia.onnx (only synthetic voices so far — if it misses, lower TALK_WAKE_THRESHOLD or
+  add voices to wake/voices and retrain), Greek voice download, VAD, streaming (needs Agent SDK/hades), SimpleX wiring, Windows wake.
 
 ## Wake word — live findings (2026-09-13, main session)
 - QUEUED FIX: follow-up window opens only after a wake-word turn (`armed` set in wake.ts `turn()`).

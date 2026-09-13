@@ -80,7 +80,6 @@ moves the directory). Write it directly or, inside a session, use `/talk:configu
 | `player <cmd>` | `TALK_PLAYER` | PipeWire on Linux, SoX `play` elsewhere | argv template, `{rate}` placeholder, raw s16 mono on stdin |
 | `recorder <cmd>` | `TALK_RECORDER` | PipeWire on Linux, SoX `rec` elsewhere | argv template, must write raw s16le 16 kHz mono to `{raw}` |
 | `max <chars>` | `TALK_MAX_SPEAK_CHARS` | `1200` | sentence-boundary cut for long replies |
-| (edit the file) | `TALK_WAKE` | `off` | `on` = wake word "hey claudia" (Linux, needs the venv from README "Wake word"); `TALK_WAKE_WORD`, `TALK_WAKE_MODEL` (`hey_jarvis` stand-in), `TALK_WAKE_THRESHOLD` 0.5, `TALK_WAKE_FOLLOWUP_S` 6, `TALK_WAKE_SILENCE_MS` 1200, `TALK_WAKE_RMS` 0.01 |
 
 Example, English defaults with models elsewhere:
 
@@ -116,6 +115,39 @@ grep -h 'Server stderr' ~/.cache/claude-cli-nodejs/*/mcp-logs-plugin-talk-talk/*
 Then: hold Right Alt, speak, release → the transcript appears as a `<channel …talk…>` turn and
 the reply is spoken. Speech failures land in `~/.claude/channels/talk/talk.log`.
 
+## 6. Wake word "hey claudia" (optional, Linux only)
+
+Hands-free alternative to the key. **Windows/macOS: unsupported for now** — say so, do not improvise.
+
+1. Runtime (one-time; nixpkgs has no `openwakeword`, so binaries come from the flake dev shell and
+   only the pure-Python package goes into a venv):
+   ```bash
+   cd /abs/path/claude-talk && nix develop --builders ''
+   python3 -m venv --system-site-packages ~/.claude/channels/talk/wake/venv
+   ~/.claude/channels/talk/wake/venv/bin/pip install --no-deps openwakeword
+   ~/.claude/channels/talk/wake/venv/bin/python bin/wake-check.py 5 models/hey_claudia.onnx   # say it: score > 0.5
+   ```
+2. Enable: `/talk:configure wake on` (writes `TALK_WAKE=on`). **Applies at the next launch.**
+3. Verify after relaunch: the server log shows `talk: say "hey claudia" to talk`. Say it → beep →
+   speak → the transcript arrives as a channel turn. After the spoken reply ends there is a
+   `TALK_WAKE_FOLLOWUP_S` (6 s) window in which the next utterance needs no wake word.
+
+| key | default | notes |
+|---|---|---|
+| `TALK_WAKE` | `off` | `on` = detector on the mic while the session runs |
+| `TALK_WAKE_WORD` | `hey claudia` | what the user says (label only; the model decides) |
+| `TALK_WAKE_MODEL` | `hey_claudia` | repo `models/hey_claudia.onnx`; `hey_jarvis` = prebuilt fallback (then say "hey jarvis"); or a path |
+| `TALK_WAKE_FOLLOWUP_S` | `6` | follow-up window |
+| `TALK_WAKE_THRESHOLD` / `TALK_WAKE_SILENCE_MS` / `TALK_WAKE_RMS` | `0.5` / `1200` / `0.01` | detector score; quiet that ends an utterance; mic RMS that counts as speech (calibrate from the `rms‰` trace in `talk.log`) |
+
+Gotchas: **Claudia must never say the wake word aloud** — the mic hears the speaker and the
+detector triggers on her voice (observed live). Footprint: one Python process, ~~190 MB RSS,
+~~10 % of a core. `wake.lock` = one server per machine, like `hold.lock`. Log lines
+`wake word off: … venv … missing` → step 1; `detector exited` → the Python traceback is in `talk.log`.
+Retraining the model (new voices, other spelling): `bin/wake-train` inside the same dev shell + venv,
+~20 min on CPU, writes `models/hey_claudia.onnx`; multi-speaker piper voices in
+`~/.claude/channels/talk/wake/voices/` widen the training set.
+
 ## Failure modes
 
 | symptom | cause | fix |
@@ -126,6 +158,8 @@ the reply is spoken. Speech failures land in `~/.claude/channels/talk/talk.log`.
 | `hold-to-talk off: another talk server owns the key` | two sessions with the plugin | only one listens (`~/.claude/channels/talk/hold.lock`); use `/talk:listen` in the other |
 | reply not spoken | `TALK_SPEAK=off`, or typed turn in `mirror` mode | `/talk:configure speak on` |
 | speech garbled/underscores missing | markdown sanitizer | prose only is spoken; code/tables are skipped by design |
+| `wake word off: … venv/bin/python missing` | wake runtime not set up | section 6 step 1 |
+| wake word never triggers / triggers on everything | threshold, or a model trained on other voices | `bin/wake-check.py 7 models/hey_claudia.onnx` while saying it; adjust `TALK_WAKE_THRESHOLD`; retrain with `bin/wake-train` |
 
 ## Rules for you, the agent
 
