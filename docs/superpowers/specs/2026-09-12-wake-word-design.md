@@ -34,6 +34,7 @@ prebuilt word first.
 ## AGREED PATH (Vaios, 2026-09-13 by voice) — build next (~2 h after 10:30 EEST)
 
 Decision: the proper detector (openWakeWord), NOT the whisper-every-2-seconds hack (rejected).
+**Wake word = "hey claudia"** (two words, like "hey jarvis"; Vaios 2026-09-13 12:56).
 
 States: **idle** → (wake word) → **listening** → transcribe → session turn → Claudia answers
 → **follow-up window** (`TALK_WAKE_FOLLOWUP_S`, default 6; speech starts a new turn without the
