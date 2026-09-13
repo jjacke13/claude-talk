@@ -91,7 +91,7 @@ test('wake defaults present', () => {
   const c = resolveConfig('', {}, '/h')
   expect(c.TALK_WAKE).toBe('off')
   expect(c.TALK_WAKE_WORD).toBe('hey claudia')
-  expect(c.TALK_WAKE_MODEL).toBe('hey_jarvis')
+  expect(c.TALK_WAKE_MODEL).toBe('hey_claudia')
   expect([c.TALK_WAKE_THRESHOLD, c.TALK_WAKE_FOLLOWUP_S, c.TALK_WAKE_SILENCE_MS, c.TALK_WAKE_RMS]).toEqual(['0.5', '6', '1200', '0.01'])
 })
 

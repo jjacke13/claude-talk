@@ -20,12 +20,22 @@ import { LOG_FILE, SAY_PID, STATE_DIR, log, markSpoken, startRecording, stopReco
 const LOCK = join(STATE_DIR, 'wake.lock')
 const VENV_PY = join(STATE_DIR, 'wake', 'venv', 'bin', 'python')
 const DETECTOR = new URL('./bin/wake-detector', import.meta.url).pathname
+const MODELS_DIR = new URL('./models/', import.meta.url).pathname
 const CAP_MS = 20_000, POLL_MS = 100, SAY_POLL_MS = 300, RESTART_AFTER_MS = 60_000
 const GRACE_MS = 500   // the beep's echo and the wake word's tail land here: recorded, but not counted as speech
 
 type State = 'idle' | 'listening' | 'followup'
 type Capture = { aborted: boolean }
 const rm = (wav: string) => { for (const f of [wav, wav + '.raw']) try { unlinkSync(f) } catch {} }
+// A bare name is the plugin's models/<name>.onnx when that exists; otherwise it reaches openwakeword
+// as-is (a prebuilt name such as hey_jarvis, or a path). hey_jarvis is the fallback if ours is missing.
+export function modelArg(v: string): string {
+  const shipped = join(MODELS_DIR, v + '.onnx')
+  if (v.includes('/') || v.endsWith('.onnx')) return v
+  if (existsSync(shipped)) return shipped
+  if (v === 'hey_claudia') { log(`${shipped} missing — using the prebuilt hey_jarvis (say "hey jarvis")`); return 'hey_jarvis' }
+  return v
+}
 function alive(pidFile: string): boolean {
   try { const pid = Number(readFileSync(pidFile, 'utf8')); if (pid > 0) { process.kill(pid, 0); return true } } catch {}
   return false
@@ -123,8 +133,9 @@ export function startWake(cfg: Config, onText: (text: string) => void): void {
 
   function spawnDetector(): void {
     const t0 = Date.now()
-    det = Bun.spawn([DETECTOR, '--model', cfg.TALK_WAKE_MODEL, '--threshold', cfg.TALK_WAKE_THRESHOLD], { stdin: 'ignore', stdout: 'pipe', stderr: openSync(LOG_FILE, 'a') })
-    log(`wake word: starting detector (model ${cfg.TALK_WAKE_MODEL}, threshold ${cfg.TALK_WAKE_THRESHOLD})`)
+    const model = modelArg(cfg.TALK_WAKE_MODEL)
+    det = Bun.spawn([DETECTOR, '--model', model, '--threshold', cfg.TALK_WAKE_THRESHOLD], { stdin: 'ignore', stdout: 'pipe', stderr: openSync(LOG_FILE, 'a') })
+    log(`wake word: starting detector (model ${model}, threshold ${cfg.TALK_WAKE_THRESHOLD})`)
     void readLines(det.stdout as ReadableStream<Uint8Array>, line => {
       if (line === 'ready') log(`say "${cfg.TALK_WAKE_WORD}" to talk`)
       else if (/^\S+ [\d.]+$/.test(line)) void onDetect(line)

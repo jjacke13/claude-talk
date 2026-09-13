@@ -1,0 +1,363 @@
+#!/usr/bin/env python3
+"""Train models/hey_claudia.onnx — the openwakeword classifier for the wake word "hey claudia".
+
+Pipeline, CPU only, minutes:
+  1. piper renders the wake word (a few spellings, three speeds) and negatives (near-misses,
+     other names, plain sentences) with every voice under $TALK_STATE_DIR/models,
+     ~/.hermes/models/piper and $TALK_STATE_DIR/wake/voices — multi-speaker voices give
+     --speakers-per-voice speakers each. Rendered clips are cached per voice in the workdir.
+  2. numpy/scipy augmentation: speed/pitch, gain, white/pink noise, the room's own noise
+     (recorded from the mic for --room-seconds), synthetic reverb.
+  3. openwakeword's own AudioFeatures turns 2 s clips into (16, 96) embeddings.
+  4. sklearn fits a small MLP; it is written as ONNX with the exact input [1,16,96] → output
+     [1,1] contract openwakeword's Model expects.
+Run inside the wake runtime (see README "Wake word"):
+  nix develop --builders '' -c ~/.claude/channels/talk/wake/venv/bin/python bin/wake-train
+"""
+import argparse
+import json
+import os
+import random
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+from concurrent.futures import ProcessPoolExecutor
+from pathlib import Path
+
+import numpy as np
+from scipy.signal import fftconvolve, resample_poly
+
+SR = 16000
+CLIP = 2 * SR                 # 32000 samples: what gives 16 embedding frames
+STATE = Path(os.environ.get("TALK_STATE_DIR") or Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude") / "channels" / "talk")
+VOICE_DIRS = [STATE / "models", Path.home() / ".hermes" / "models" / "piper", STATE / "wake" / "voices"]
+ROOT = Path(__file__).resolve().parent.parent
+
+POSITIVE = ["hey Claudia", "hey, Claudia", "Hey Claudia!", "hey Claudia?", "hey Cloudia", "hey, Cloudia"]
+NEAR_MISS = ["hey Jarvis", "hey Claude", "Claudia", "hey Maria", "hey cloud", "hey Nadia", "hey Lydia", "hey Julia",
+             "hey Google", "hey Siri", "okay Claude", "play audio", "hey there", "hey you", "Claude", "cloudy day",
+             "hey Sofia", "hey Andrea", "hey Clara", "a clear idea", "hey, come here", "Cordelia", "hey Daddy"]
+HARD = {"Claudia": 3, "hey Claude": 3, "hey cloud": 3, "Claude": 2, "hey Nadia": 2, "hey Maria": 2}   # extra augmented copies
+SENTENCES = [
+    "what is the weather like today", "set a timer for ten minutes", "the meeting starts at noon", "can you read the log",
+    "I think the build failed again", "open the front door please", "how many people live in Athens", "turn the lights off",
+    "the quick brown fox jumps over the lazy dog", "we should refactor this module tomorrow", "call me when you get home",
+    "the coffee machine is broken", "remind me to buy milk and bread", "she said the boat needs a new compass",
+    "the network is down in the office", "let me check the git history first", "it rained all day in the mountains",
+    "my laptop battery is almost empty", "please translate this sentence into Greek", "the children are playing outside",
+    "where did I leave my keys", "the train leaves at half past seven", "he painted the fence white last summer",
+    "add the numbers in the second column", "our flight was delayed by two hours", "the audio quality is quite good",
+    "I need a cloud backup of these files", "the media server crashed overnight", "India and Australia play cricket today",
+    "close the window it is cold", "the encyclopedia has a chapter on volcanoes", "we had a lovely dinner with Claudio",
+    "the claw machine ate my coins", "clouds are gathering over the harbour", "a quiet evening with a good book",
+    "download the latest firmware image", "the dog is barking at the mailman", "who wrote this function and why",
+    "the temperature dropped below zero", "start the recording now", "stop talking and listen", "that is a great idea",
+]
+
+
+def parse_args() -> argparse.Namespace:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--out", default=str(ROOT / "models" / "hey_claudia.onnx"))
+    ap.add_argument("--workdir", default=str(STATE / "wake" / "train"), help="rendered-clip cache + room noise")
+    ap.add_argument("--speakers-per-voice", type=int, default=40)
+    ap.add_argument("--room-seconds", type=float, default=15, help="record this much room noise from the mic (0 = skip)")
+    ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 2) - 2))
+    return ap.parse_args()
+
+
+# --- 1. rendering ------------------------------------------------------------------------------
+
+def find_voices() -> list[Path]:
+    seen: dict[str, Path] = {}
+    for d in VOICE_DIRS:
+        for p in sorted(Path(d).glob("*.onnx")):
+            seen.setdefault(p.name, p)
+    return list(seen.values())
+
+
+def voice_speakers(voice: Path, per_voice: int, rng: random.Random) -> list:
+    n = json.loads(Path(f"{voice}.json").read_text()).get("num_speakers", 1)
+    return [None] if n <= 1 else sorted(rng.sample(range(n), min(n, per_voice)))
+
+
+def to_16k(chunks, rate: int) -> np.ndarray:
+    """16 kHz int16 (half the memory of float32; ~10k clips stay resident during training)."""
+    audio = np.concatenate([c.audio_float_array for c in chunks]).astype(np.float32)
+    if rate != SR:
+        audio = resample_poly(audio, SR, rate)
+    return (np.clip(audio, -1, 1) * 32767).astype(np.int16)
+
+
+def render_voice(args: tuple) -> tuple[str, dict]:
+    """One task = one voice × a few speakers: returns {text: [clip, ...]} for every (speaker, speed); cached as .npz."""
+    voice, speakers, cache, seed = args
+    cache = Path(cache)
+    if cache.exists():
+        z = np.load(cache, allow_pickle=True)
+        return voice, {k: list(v) for k, v in z.items()}
+    import onnxruntime as ort
+    ort.set_default_logger_severity(3)
+    # One ORT thread per process: --jobs processes × 8 threads each thrashed (16 CPU-min per 1000 clips).
+    # piper calls onnxruntime.SessionOptions() at load time, so this shim is what it gets.
+    _SO = ort.SessionOptions
+    def single_thread_options():
+        o = _SO(); o.intra_op_num_threads = 1; o.inter_op_num_threads = 1; return o
+    ort.SessionOptions = single_thread_options
+    from piper import PiperVoice
+    from piper.config import SynthesisConfig
+    v = PiperVoice.load(voice)
+    rate = v.config.sample_rate
+    rng = random.Random(seed)
+    out: dict[str, list] = {}
+    for spk in speakers:
+        for text in POSITIVE:
+            for ls in (0.8, 1.0, 1.2):
+                cfg = SynthesisConfig(speaker_id=spk, length_scale=ls, noise_scale=rng.choice((0.5, 0.667, 0.9)))
+                out.setdefault(text, []).append(to_16k(v.synthesize(text, cfg), rate))
+        for text in NEAR_MISS + SENTENCES:
+            cfg = SynthesisConfig(speaker_id=spk, length_scale=rng.choice((0.8, 1.0, 1.2)))
+            out.setdefault(text, []).append(to_16k(v.synthesize(text, cfg), rate))
+    np.savez(cache, **{k: np.array(vs, dtype=object) for k, vs in out.items()})
+    return voice, out
+
+
+def render_all(voices: list[Path], workdir: Path, per_voice: int, jobs: int, seed: int) -> dict[str, list]:
+    rng = random.Random(seed)
+    tasks = []
+    for v in voices:   # chunks of 4 speakers keep the pool balanced (libritts alone would otherwise be the tail)
+        spk = voice_speakers(v, per_voice, rng)
+        for i in range(0, len(spk), 4):
+            tasks.append((str(v), spk[i:i + 4], str(workdir / f"{v.stem}-{i // 4:02d}.npz"), seed + len(tasks)))
+    clips: dict[str, list] = {}
+    t0, done = time.time(), 0
+    with ProcessPoolExecutor(max_workers=jobs) as pool:
+        for voice, out in pool.map(render_voice, tasks):
+            done += sum(len(v) for v in out.values())
+            print(f"\r  {done} clips rendered ({time.time() - t0:.0f}s)", end="", flush=True)
+            for k, vs in out.items():
+                clips.setdefault(k, []).extend(vs)
+    print()
+    return clips
+
+
+def record_room(workdir: Path, seconds: float) -> np.ndarray:
+    """The room's own noise floor, from the default mic; cached. Empty array when unavailable."""
+    cached = workdir / "room.npy"
+    if cached.exists():
+        return np.load(cached)
+    if seconds <= 0 or not shutil.which("pw-record"):
+        return np.zeros(0, np.float32)
+    raw = Path(tempfile.mkdtemp()) / "room.raw"
+    print(f"  recording {seconds:g} s of room noise from the mic (stay quiet)…", flush=True)
+    try:
+        subprocess.run(["timeout", str(seconds), "pw-record", "--raw", "--rate", str(SR), "--channels", "1", "--format", "s16", str(raw)],
+                       check=False, stderr=subprocess.DEVNULL)
+        room = np.frombuffer(raw.read_bytes(), np.int16).astype(np.float32) / 32768
+    except OSError as e:
+        print(f"  room recording skipped: {e}", flush=True)
+        room = np.zeros(0, np.float32)
+    np.save(cached, room)
+    return room
+
+
+# --- 2. augmentation ---------------------------------------------------------------------------
+
+def frame(x: np.ndarray, gap_s: float) -> np.ndarray:
+    """Put the clip so it ENDS gap_s before the 2 s window's end; what does not fit is cut from the front.
+    A streaming detector scores every position, so training must too: positives end 0–0.3 s before the
+    end, the same phrase 0.7 s or more early is a negative (see examples())."""
+    out = np.zeros(CLIP, np.float32)
+    end = CLIP - int(gap_s * SR)
+    x = x[-end:] if len(x) > end else x
+    out[end - len(x):end] = x
+    return out
+
+
+def bed(room: np.ndarray, rng: random.Random, nrng: np.random.Generator) -> np.ndarray:
+    """A quiet background under every example. Never digital silence: openwakeword's streaming
+    melspectrogram differs from the batch one exactly on zero padding, and a live mic never gives zeros."""
+    if len(room) >= CLIP and rng.random() < 0.7:
+        s = rng.randrange(0, len(room) - CLIP + 1)
+        x = room[s:s + CLIP]
+    else:
+        x = pink_noise(CLIP, nrng) * 0.03
+    return x * 10 ** (rng.uniform(-30, 0) / 20)
+
+
+def pink_noise(n: int, rng: np.random.Generator) -> np.ndarray:
+    spec = np.fft.rfft(rng.standard_normal(n))
+    spec /= np.sqrt(np.arange(1, len(spec) + 1))
+    x = np.fft.irfft(spec, n)
+    return (x / (np.abs(x).max() + 1e-9)).astype(np.float32)
+
+
+def add_at_snr(x: np.ndarray, noise: np.ndarray, snr_db: float) -> np.ndarray:
+    px, pn = np.mean(x ** 2) + 1e-9, np.mean(noise ** 2) + 1e-9
+    return x + noise * np.sqrt(px / (pn * 10 ** (snr_db / 10)))
+
+
+def augment(x: np.ndarray, room: np.ndarray, rng: random.Random, nrng: np.random.Generator) -> np.ndarray:
+    if rng.random() < 0.6:   # speed & pitch together, ±12 %
+        f = rng.uniform(0.88, 1.12)
+        y = resample_poly(x, 100, int(round(100 * f))).astype(np.float32)
+        x = y[-CLIP:] if len(y) >= CLIP else np.concatenate([np.zeros(CLIP - len(y), np.float32), y])
+    if rng.random() < 0.4:   # reverb: exponentially decaying noise tail, RT60 0.15–0.6 s
+        rt = rng.uniform(0.15, 0.6)
+        t = np.arange(int(rt * SR)) / SR
+        ir = nrng.standard_normal(len(t)).astype(np.float32) * np.exp(-6.9 * t / rt)
+        ir[0] = 3.0
+        x = fftconvolve(x, ir / np.sum(np.abs(ir)))[:CLIP].astype(np.float32)
+    if len(room) >= CLIP and rng.random() < 0.6:
+        s = rng.randrange(0, len(room) - CLIP + 1)
+        x = add_at_snr(x, room[s:s + CLIP], rng.uniform(0, 25))
+    if rng.random() < 0.5:
+        noise = pink_noise(CLIP, nrng) if rng.random() < 0.5 else nrng.standard_normal(CLIP).astype(np.float32)
+        x = add_at_snr(x, noise, rng.uniform(5, 30))
+    x = x * 10 ** (rng.uniform(-30, 0) / 20)
+    return np.clip(x, -1, 1).astype(np.float32)
+
+
+def examples(clips: dict[str, list], room: np.ndarray, seed: int):
+    """Yields (2 s float32 clip, label, tag) — a generator, so the audio never sits in memory at once."""
+    rng, nrng = random.Random(seed), np.random.default_rng(seed)
+
+    def variants(x: np.ndarray, label: int, t: str, n: int):
+        x = x * 10 ** (rng.uniform(-12, 0) / 20) + bed(room, rng, nrng)
+        yield np.clip(x, -1, 1).astype(np.float32), label, t
+        for _ in range(n):
+            yield augment(x, room, rng, nrng), label, t
+
+    for text, cs in clips.items():
+        pos = text in POSITIVE
+        for c in cs:
+            c = c.astype(np.float32) / 32768
+            if pos:
+                yield from variants(frame(c, rng.uniform(0, 0.3)), 1, text, 2)
+                yield from variants(frame(c, rng.uniform(0.7, 1.3)), 0, "early " + text, 0)      # already gone by
+                cut = c[:int(len(c) * rng.uniform(0.35, 0.6))]                                  # "hey Clau-"
+                yield from variants(frame(cut, rng.uniform(0, 0.3)), 0, "prefix " + text, 0)
+            elif text in NEAR_MISS:
+                yield from variants(frame(c, rng.uniform(0, 0.4)), 0, text, HARD.get(text, 1))
+                yield from variants(frame(c, rng.uniform(0.4, 1.2)), 0, text, 0)
+            else:   # a sentence: one random 2 s window, one augmented copy
+                s = rng.randrange(0, len(c) - CLIP) if len(c) > CLIP else 0
+                yield from variants(frame(c[s:s + CLIP], rng.uniform(0, 0.5)), 0, "sentence", 1)
+    if len(room) >= CLIP:   # the room alone, and pure noise, are negatives too
+        for _ in range(200):
+            s = rng.randrange(0, len(room) - CLIP + 1)
+            yield from variants(room[s:s + CLIP] * 10 ** (rng.uniform(-6, 12) / 20), 0, "room", 0)
+    for _ in range(200):
+        yield from variants(pink_noise(CLIP, nrng) * 10 ** (rng.uniform(-30, -6) / 20), 0, "noise", 0)
+
+
+# --- 3. features, 4. classifier + ONNX --------------------------------------------------------------
+
+def embed(gen, batch: int = 256) -> tuple[np.ndarray, np.ndarray, list[str]]:
+    """Streams the examples through openwakeword's feature extractor: (N, 16, 96) float32, labels, tags."""
+    from openwakeword.utils import AudioFeatures
+    F = AudioFeatures(inference_framework="onnx", ncpu=max(1, (os.cpu_count() or 2) - 1))
+    shape = F.get_embedding_shape(CLIP / SR)
+    assert shape == (16, 96), f"unexpected embedding shape {shape}"
+    feats, y, tag, buf = [], [], [], []
+
+    def flush() -> None:
+        pcm = (np.array(buf, np.float32) * 32767).astype(np.int16)
+        feats.append(F.embed_clips(pcm, batch_size=len(pcm)).astype(np.float32))
+        buf.clear()
+        print(f"\r  features {sum(len(f) for f in feats)}", end="", flush=True)
+
+    for x, label, t in gen:
+        buf.append(x); y.append(label); tag.append(t)
+        if len(buf) == batch:
+            flush()
+    if buf:
+        flush()
+    print()
+    return np.concatenate(feats), np.array(y, np.int8), tag
+
+
+def fit(feat: np.ndarray, y: np.ndarray, seed: int):
+    from sklearn.neural_network import MLPClassifier
+    clf = MLPClassifier(hidden_layer_sizes=(96, 32), alpha=1e-3, batch_size=256, learning_rate_init=1e-3,
+                        max_iter=60, early_stopping=True, n_iter_no_change=6, random_state=seed)
+    clf.fit(feat.reshape(len(feat), -1), y)
+    return clf
+
+
+def export_onnx(clf, out: Path) -> None:
+    """Flatten → (Gemm → Relu)×2 → Gemm → Sigmoid, static [1,16,96] in / [1,1] out, opset 13."""
+    import onnx
+    from onnx import TensorProto, helper, numpy_helper
+    inits, nodes, prev = [], [], "flat"
+    inits.append(numpy_helper.from_array(np.array([1, -1], np.int64), "shape"))
+    nodes.append(helper.make_node("Reshape", ["input", "shape"], ["flat"]))
+    layers = list(zip(clf.coefs_, clf.intercepts_))
+    for i, (W, b) in enumerate(layers):
+        inits += [numpy_helper.from_array(W.astype(np.float32), f"W{i}"), numpy_helper.from_array(b.astype(np.float32), f"b{i}")]
+        last = i == len(layers) - 1
+        nodes.append(helper.make_node("Gemm", [prev, f"W{i}", f"b{i}"], [f"z{i}"]))
+        nodes.append(helper.make_node("Sigmoid" if last else "Relu", [f"z{i}"], ["output" if last else f"a{i}"]))
+        prev = f"a{i}"
+    graph = helper.make_graph(nodes, "hey_claudia", [helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 16, 96])],
+                              [helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, 1])], inits)
+    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)], producer_name="claude-talk wake-train")
+    model.ir_version = 8
+    onnx.checker.check_model(model)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    onnx.save(model, str(out))
+
+
+def verify(out: Path, feat: np.ndarray, clf) -> float:
+    import onnxruntime as ort
+    s = ort.InferenceSession(str(out), providers=["CPUExecutionProvider"])
+    idx = np.linspace(0, len(feat) - 1, 50).astype(int)
+    a = np.array([s.run(None, {"input": feat[i][None]})[0][0][0] for i in idx])
+    b = clf.predict_proba(feat[idx].reshape(len(idx), -1))[:, 1]
+    return float(np.abs(a - b).max())
+
+
+def report(clf, feat: np.ndarray, y: np.ndarray, tag: list[str], test: np.ndarray) -> None:
+    p = clf.predict_proba(feat.reshape(len(feat), -1))[:, 1]
+    yt, pt = y[test], p[test]
+    print(f"  held-out: recall@0.5 {np.mean(pt[yt == 1] >= 0.5):.3f}  false-positive@0.5 {np.mean(pt[yt == 0] >= 0.5):.4f}  "
+          f"(pos {int((yt == 1).sum())}, neg {int((yt == 0).sum())})")
+    tags = np.array(tag)
+    for t in NEAR_MISS[:8] + ["sentence", "room", "noise", "early hey Claudia", "prefix hey Claudia"]:
+        m = tags == t
+        if m.any():
+            print(f"    neg '{t}': max {p[m].max():.3f}  mean {p[m].mean():.3f}  n={int(m.sum())}")
+    for t in POSITIVE:
+        m = tags == t
+        print(f"    pos '{t}': min {p[m].min():.3f}  mean {p[m].mean():.3f}  n={int(m.sum())}")
+
+
+def main() -> None:
+    a = parse_args()
+    workdir = Path(a.workdir); workdir.mkdir(parents=True, exist_ok=True)
+    voices = find_voices()
+    if not voices:
+        sys.exit(f"no piper voices found under {[str(d) for d in VOICE_DIRS]}")
+    print(f"voices: {len(voices)} ({', '.join(v.stem for v in voices)})")
+    room = record_room(workdir, a.room_seconds)
+    print(f"room noise: {len(room) / SR:.0f} s")
+    print("rendering…")
+    clips = render_all(voices, workdir, a.speakers_per_voice, a.jobs, a.seed)
+    del voices
+    feat, y, tag = embed(examples(clips, room, a.seed))
+    del clips
+    print(f"examples: {len(y)} ({int(y.sum())} positive, {int((y == 0).sum())} negative)")
+    rng = np.random.default_rng(a.seed)
+    test = rng.random(len(y)) < 0.1
+    clf = fit(feat[~test], y[~test], a.seed)
+    print(f"trained: {clf.n_iter_} epochs, best validation score {clf.best_validation_score_:.4f}")
+    report(clf, feat, y, tag, test)
+    out = Path(a.out)
+    export_onnx(clf, out)
+    print(f"wrote {out} ({out.stat().st_size // 1024} KB); onnx vs sklearn max |Δ| = {verify(out, feat, clf):.2e}")
+
+
+if __name__ == "__main__":
+    main()

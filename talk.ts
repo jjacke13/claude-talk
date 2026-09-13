@@ -27,10 +27,11 @@ export function defaultsFor(platform: string) {
     TALK_NARRATE: 'off',
     TALK_REPLY: 'both',
     // Wake word (wake.ts). TALK_WAKE_WORD is what the user says; TALK_WAKE_MODEL is the openwakeword
-    // model that hears it — the prebuilt "hey_jarvis" stands in until models/hey_claudia.onnx exists.
+    // model that hears it: a bare name resolves to the plugin's models/<name>.onnx (hey_claudia ships
+    // there, trained by bin/wake-train), else an openwakeword prebuilt name (hey_jarvis) or a path.
     TALK_WAKE: 'off',
     TALK_WAKE_WORD: 'hey claudia',
-    TALK_WAKE_MODEL: 'hey_jarvis',
+    TALK_WAKE_MODEL: 'hey_claudia',
     TALK_WAKE_THRESHOLD: '0.5',     // detector score 0–1
     TALK_WAKE_FOLLOWUP_S: '6',      // seconds after Claudia stops talking during which no wake word is needed
     TALK_WAKE_SILENCE_MS: '1200',   // this much quiet after speech ends the utterance

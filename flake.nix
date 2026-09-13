@@ -12,6 +12,7 @@
       # by bin/wake-check.py, because nixpkgs has no python3Packages.openwakeword.
       wakePython = pkgs.python3.withPackages (ps: with ps; [
         onnxruntime numpy scipy tqdm requests sounddevice
+        scikit-learn onnx   # bin/wake-train only: fits the classifier, writes the .onnx
       ]);
     in {
       # `nix develop` → everything the scripts shell out to. PipeWire's pw-record/pw-play
