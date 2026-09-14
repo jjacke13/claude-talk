@@ -164,6 +164,14 @@ config file is chmod 600 and the token is never printed), and `TALK_STT_MODEL` f
 empty = `TALK_LANG`. Measured here: ggml-small q8 on Vulkan via whisper-server 0.9 s vs 1.2 s for
 whisper-cli with ggml-base.
 
+## Several sessions open? `TALK_HOME`
+
+The plugin is enabled globally, so every Claude Code session starts a talk server and the first one
+grabs the key and the mic. Set `TALK_HOME=/path/to/project` (comma-separated for several) in the talk
+config — `/talk:configure home ~/Desktop/repos/claudia` — and only sessions started in those
+directories are live; the others log `inactive here … — idle` and their `speak` tool answers
+"inactive". Applies at the next launch.
+
 ## Companion UI (optional)
 
 `/talk:configure ui on` (`TALK_UI=on`), relaunch the session, open **http://127.0.0.1:7590** in a browser

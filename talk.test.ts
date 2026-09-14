@@ -1,5 +1,5 @@
-import { expect, test } from 'bun:test'
-import { beepPcm, listenDone, listenStart, listenStep, parseConfig, resolveConfig, rms, sanitizeForSpeech, shouldSpeak, sortInbox, splitCmd, toolNarration, turnState, turnTexts } from './talk.ts'
+import { describe, expect, test } from 'bun:test'
+import { activeHere, beepPcm, listenDone, listenStart, listenStep, parseConfig, resolveConfig, rms, sanitizeForSpeech, shouldSpeak, sortInbox, splitCmd, toolNarration, turnState, turnTexts } from './talk.ts'
 
 test('parseConfig: comments, quotes, export, last wins', () => {
   expect(parseConfig(['# c', '', 'TALK_LANG=el # greek', 'export TALK_SPEAK=on', 'TALK_VOICE="a # b"', 'TALK_LANG=fr', 'x=1'].join('\n')))
@@ -127,4 +127,15 @@ test('listenStep/listenDone: silence after speech, no speech, cap', () => {
   s = listenStep(s, 0.05, 19990, 0.01, 100)
   expect(listenDone(s, 20000, o)).toBe('cap')
   expect(listenDone(listenStart(0), 20000, { ...o, speechWithinMs: 30000 })).toBe('nospeech')   // cap without speech = nothing
+})
+
+describe('activeHere (TALK_HOME)', () => {
+  test('empty = everywhere', () => { expect(activeHere({ TALK_HOME: '' }, '/x')).toBe(true); expect(activeHere({ TALK_HOME: '' }, undefined)).toBe(true) })
+  test('matches listed dirs only, trailing slashes ignored', () => {
+    const cfg = { TALK_HOME: '/home/v/claudia, /home/v/other/' }
+    expect(activeHere(cfg, '/home/v/claudia')).toBe(true)
+    expect(activeHere(cfg, '/home/v/other')).toBe(true)
+    expect(activeHere(cfg, '/home/v/bip-110')).toBe(false)
+    expect(activeHere(cfg, undefined)).toBe(false)
+  })
 })

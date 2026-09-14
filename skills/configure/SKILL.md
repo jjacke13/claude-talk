@@ -78,11 +78,11 @@ Keys and defaults:
 5. Remind: push-to-talk is `bun <plugin-root>/bin/talk` (or `talk` if on PATH); replies are spoken per `TALK_SPEAK`;
    with `TALK_WAKE=on`, saying the wake word does the same as the key.
 
-### `lang <code>` · `model <path>` · `voice <path>` · `speak mirror|on|off` · `reply voice|both` · `player <cmd>` · `max <chars>` · `wake on|off` · `wakeword <name>` · `wakemodel <path>` · `followup <s>` · `ui on|off` · `ui fps <idle> [active]` · `bargein on|off` · `stt <url|off>` · `stt lang <code|auto>` · `stt token <token>`
+### `lang <code>` · `model <path>` · `voice <path>` · `speak mirror|on|off` · `reply voice|both` · `player <cmd>` · `max <chars>` · `wake on|off` · `wakeword <name>` · `wakemodel <path>` · `followup <s>` · `ui on|off` · `ui fps <idle> [active]` · `bargein on|off` · `stt <url|off>` · `stt lang <code|auto>` · `stt token <token>` · `home <dir>[,<dir>]|off`
 
 Set the matching key (`TALK_LANG`, `TALK_MODEL`, `TALK_VOICE`, `TALK_SPEAK`, `TALK_PLAYER`, `TALK_RECORDER`, `TALK_KEY`, `TALK_SPEED`, `TALK_NARRATE`, `TALK_REPLY`,
 `TALK_MAX_SPEAK_CHARS`, `TALK_WAKE`, `TALK_WAKE_WORD`, `TALK_WAKE_MODEL`, `TALK_WAKE_FOLLOWUP_S`, `TALK_UI`). `ui fps <idle> [active]` sets
-`TALK_UI_FPS` and, when given, `TALK_UI_FPS_ACTIVE` (integers 1–120; refuse anything else). `stt <url>` sets `TALK_STT_URL`
+`home <dir>[,<dir>]` sets `TALK_HOME` (comma-separated project dirs; only sessions started there own the mic, wake word, page and `speak` — other sessions idle); `home off` clears it. `TALK_UI_FPS` and, when given, `TALK_UI_FPS_ACTIVE` (integers 1–120; refuse anything else). `stt <url>` sets `TALK_STT_URL`
 (must start with `http://` or `https://`; `stt off` writes an empty value), `stt lang` sets `TALK_STT_LANG`, `stt token` sets
 `TALK_STT_TOKEN` — after writing a token run `chmod 600 <state-dir>/config` and confirm with "token set", never with the value.
 STT changes apply to the next utterance (no relaunch). Keep other lines. Create the directory with `mkdir -p` if needed.

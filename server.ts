@@ -10,7 +10,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { mkdir, readFile, readdir, rename, unlink } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
-import { sortInbox } from './talk.ts'
+import { activeHere, sortInbox } from './talk.ts'
 import { startHold } from './hold.ts'
 import { armFollowUp, cancelFollowUp, startWake } from './wake.ts'
 import { startUi, uiAssistant, uiListening, uiUser } from './ui.ts'
@@ -79,6 +79,7 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
     if (req.params.name !== 'speak') throw new Error(`unknown tool ${req.params.name}`)
     const raw = (req.params.arguments as any)?.text
     if (typeof raw !== 'string' || !raw.trim()) throw new Error('text must be a non-empty string')
+    if (!ACTIVE) return { content: [{ type: 'text', text: 'talk is inactive in this project (TALK_HOME) — nothing spoken' }] }
     const text = sanitizeForSpeech(raw, 600)
     if (!text) return { content: [{ type: 'text', text: 'nothing speakable' }] }
     noteSpoken(text)
@@ -90,29 +91,34 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
   }
 })
 
+// TALK_HOME set and this session lives elsewhere → stay connected (Claude Code expects the server) but
+// touch nothing: no mic, no wake word, no page. The main session in TALK_HOME keeps the room.
+const ACTIVE = activeHere(loadConfig(), process.env.CLAUDE_PROJECT_DIR)
 await mkdir(FAILED, { recursive: true })
 await mcp.connect(new StdioServerTransport())
+if (!ACTIVE) log(`inactive here (TALK_HOME=${loadConfig().TALK_HOME}, project ${process.env.CLAUDE_PROJECT_DIR ?? '?'}) — idle`)
 
 // Poll, don't fs.watch: Bun's inotify watcher stopped delivering events after the process sat
 // idle for a few minutes (2026-09-12, live). A 500 ms readdir of a near-empty dir is free.
 async function sweep(): Promise<void> {
   for (const name of sortInbox(await readdir(INBOX).catch(() => [] as string[]))) await consume(name)
 }
-await sweep()
-const poller = setInterval(() => void sweep(), 500)
+const poller = ACTIVE ? (await sweep(), setInterval(() => void sweep(), 500)) : undefined
 // hold TALK_KEY anywhere → transcript straight into the session. A spoken turn arms the wake follow-up
 // window; pressing the key while one is open hands the mic to the key (no duplicate turn).
-startHold(loadConfig(), t => { armFollowUp(); notify(t) }, undefined, () => { cancelFollowUp(); uiListening('press') })
-startWake(loadConfig(), notify)   // TALK_WAKE=on: say the wake word instead (wake.ts)
-startUi(loadConfig())             // TALK_UI=on: companion page on 127.0.0.1:TALK_UI_PORT (ui.ts)
-log(`ready; inbox ${INBOX}`)
+if (ACTIVE) {
+  startHold(loadConfig(), t => { armFollowUp(); notify(t) }, undefined, () => { cancelFollowUp(); uiListening('press') })
+  startWake(loadConfig(), notify)   // TALK_WAKE=on: say the wake word instead (wake.ts)
+  startUi(loadConfig())             // TALK_UI=on: companion page on 127.0.0.1:TALK_UI_PORT (ui.ts)
+  log(`ready; inbox ${INBOX}`)
+}
 
 let shuttingDown = false
 function shutdown(): void {
   if (shuttingDown) return
   shuttingDown = true
   log('shutting down')
-  clearInterval(poller)
+  if (poller) clearInterval(poller)
   setTimeout(() => process.exit(0), 200)
 }
 process.stdin.on('end', shutdown)

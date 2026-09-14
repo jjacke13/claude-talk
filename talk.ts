@@ -44,6 +44,7 @@ export function defaultsFor(platform: string) {
     TALK_WAKE_FOLLOWUP_S: '6',      // seconds after Claudia stops talking during which no wake word is needed
     TALK_WAKE_SILENCE_MS: '1200',   // this much quiet after speech ends the utterance
     TALK_WAKE_RMS: '0.01',          // mic RMS (0–1) that counts as speech; laptop mic floor is ~0.002
+    TALK_HOME: '',                  // comma-separated project dirs where talk is active; empty = every session
     TALK_UI: 'off',                 // on = serve the companion page (ui.ts) on 127.0.0.1:TALK_UI_PORT
     TALK_UI_PORT: '7590',
     TALK_UI_FPS: '30',              // page frame rate while idle/thinking (whisper shares the CPU with the browser)
@@ -84,6 +85,17 @@ export function resolveConfig(fileText: string, env: Record<string, string | und
     cfg[k] = cfg[k].replace(/^~(?=\/|$)/, home)
   }
   return cfg
+}
+
+// TALK_HOME: with several Claude Code sessions open, only the ones started in these project dirs
+// should own the mic and speak (the plugin is enabled globally, so every session starts a server).
+// Empty = active everywhere. `projectDir` is CLAUDE_PROJECT_DIR as Claude Code passes it; `~` in
+// TALK_HOME is already expanded by resolveConfig.
+export function activeHere(cfg: Pick<Config, "TALK_HOME">, projectDir: string | undefined): boolean {
+  const dirs = cfg.TALK_HOME.split(",").map(d => d.trim().replace(/\/+$/, "")).filter(Boolean)
+  if (!dirs.length) return true
+  const here = (projectDir ?? "").replace(/\/+$/, "")
+  return dirs.some(d => d === here)
 }
 
 // Markdown → something a TTS voice can read. Code is dropped, not read aloud.
