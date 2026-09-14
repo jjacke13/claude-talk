@@ -34,4 +34,5 @@ test('wake/ui defaults present', async () => {
   const c = resolveConfig('', {}, '/h')
   expect(c.TALK_UI).toBe('off')
   expect(c.TALK_UI_PORT).toBe('7590')
+  expect([c.TALK_UI_FPS, c.TALK_UI_FPS_ACTIVE]).toEqual(['30', '60'])
 })

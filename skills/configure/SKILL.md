@@ -52,6 +52,7 @@ Keys and defaults:
 | `TALK_WAKE_BARGEIN` | `off` | `on` = the wake word also cuts Claudia off mid-sentence (her own voice can trigger the model — the talk key always interrupts) |
 | `TALK_UI` | `off` | `on` = the server serves the companion page (orb + transcript) at `http://127.0.0.1:TALK_UI_PORT`; loopback only; applies at the next launch |
 | `TALK_UI_PORT` | `7590` | companion page port (edit the file directly) |
+| `TALK_UI_FPS` · `TALK_UI_FPS_ACTIVE` | `30` · `60` | page frame rate while idle/thinking · while listening/speaking (lower = less CPU taken from whisper) |
 | `TALK_WAKE_THRESHOLD` · `TALK_WAKE_SILENCE_MS` · `TALK_WAKE_RMS` | `0.5` · `1200` · `0.01` | detector score; quiet that ends an utterance; mic RMS that counts as speech (edit the file directly) |
 
 ---
@@ -71,10 +72,11 @@ Keys and defaults:
 5. Remind: push-to-talk is `bun <plugin-root>/bin/talk` (or `talk` if on PATH); replies are spoken per `TALK_SPEAK`;
    with `TALK_WAKE=on`, saying the wake word does the same as the key.
 
-### `lang <code>` · `model <path>` · `voice <path>` · `speak mirror|on|off` · `reply voice|both` · `player <cmd>` · `max <chars>` · `wake on|off` · `wakeword <name>` · `wakemodel <path>` · `followup <s>` · `ui on|off` · `bargein on|off`
+### `lang <code>` · `model <path>` · `voice <path>` · `speak mirror|on|off` · `reply voice|both` · `player <cmd>` · `max <chars>` · `wake on|off` · `wakeword <name>` · `wakemodel <path>` · `followup <s>` · `ui on|off` · `ui fps <idle> [active]` · `bargein on|off`
 
 Set the matching key (`TALK_LANG`, `TALK_MODEL`, `TALK_VOICE`, `TALK_SPEAK`, `TALK_PLAYER`, `TALK_RECORDER`, `TALK_KEY`, `TALK_SPEED`, `TALK_NARRATE`, `TALK_REPLY`,
-`TALK_MAX_SPEAK_CHARS`, `TALK_WAKE`, `TALK_WAKE_WORD`, `TALK_WAKE_MODEL`, `TALK_WAKE_FOLLOWUP_S`, `TALK_UI`). Keep other lines. Create the directory with `mkdir -p` if needed.
+`TALK_MAX_SPEAK_CHARS`, `TALK_WAKE`, `TALK_WAKE_WORD`, `TALK_WAKE_MODEL`, `TALK_WAKE_FOLLOWUP_S`, `TALK_UI`). `ui fps <idle> [active]` sets
+`TALK_UI_FPS` and, when given, `TALK_UI_FPS_ACTIVE` (integers 1–120; refuse anything else). Keep other lines. Create the directory with `mkdir -p` if needed.
 For `model`/`voice`, `test -f` the path first and refuse with a clear message if absent
 (a non-English model needs a multilingual ggml, e.g. `ggml-base.bin`, not `*.en.bin`).
 For `wake on`, `test -x <state-dir>/wake/venv/bin/python` first; if absent, still write the key but print the

@@ -56,6 +56,7 @@
   // --- state ---------------------------------------------------------------------------------
   const HUES = { idle: 205, listening: 160, thinking: 262, speaking: 32, offline: 0 }
   let state = 'offline', hue = HUES.idle, events = []
+  let fps = { idle: 30, active: 60 }     // TALK_UI_FPS / TALK_UI_FPS_ACTIVE, sent by the server on connect
   const $ = id => document.getElementById(id)
   const canvas = $('orb'), ctx = canvas.getContext('2d')
 
@@ -68,6 +69,7 @@
       let ev; try { ev = JSON.parse(m.data) } catch { return }
       if (ev.type === 'state') setState(ev.state)
       else if (ev.type === 'context') { $('ctx').textContent = `context ${ev.pct}%` }
+      else if (ev.type === 'config' && ev.fps) { fps = { idle: +ev.fps.idle || 30, active: +ev.fps.active || 60 } }
       else if (ev.type === 'user' || ev.type === 'assistant') addLine(ev)
     }
   }
@@ -146,7 +148,11 @@
   document.addEventListener('visibilitychange', () => { last = 0 })
 
   function draw(now) {
-    const dt = last ? Math.min(0.05, (now - last) / 1000) : 0.016
+    // Frame-rate cap: whisper shares the CPU with this page, so draw at fps.idle unless the
+    // conversation is live (listening/speaking → fps.active). Skipped frames keep the rAF chain.
+    const want = state === 'listening' || state === 'speaking' ? fps.active : fps.idle
+    if (last && now - last < 1000 / want - 2) { requestAnimationFrame(draw); return }
+    const dt = last ? Math.min(0.1, (now - last) / 1000) : 0.016
     last = now
     const t = now / 1000
     const target = MOTION[state] ?? MOTION.idle

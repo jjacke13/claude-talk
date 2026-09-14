@@ -38,6 +38,8 @@ export function defaultsFor(platform: string) {
     TALK_WAKE_RMS: '0.01',          // mic RMS (0–1) that counts as speech; laptop mic floor is ~0.002
     TALK_UI: 'off',                 // on = serve the companion page (ui.ts) on 127.0.0.1:TALK_UI_PORT
     TALK_UI_PORT: '7590',
+    TALK_UI_FPS: '30',              // page frame rate while idle/thinking (whisper shares the CPU with the browser)
+    TALK_UI_FPS_ACTIVE: '60',       // … while listening/speaking
     TALK_WAKE_BARGEIN: 'off',       // on = the wake word also interrupts Claudia mid-sentence (her own voice can trigger it)
     ...(AUDIO_DEFAULTS[platform] ?? AUDIO_DEFAULTS.other!),
   }

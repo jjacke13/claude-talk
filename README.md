@@ -149,7 +149,9 @@ line you said (dim) and her latest spoken line (bright) underneath; `t` or the c
 to the plain transcript (last 50 lines). Corners: clock, state, and the context percentage when a
 `context-*` file exists in the state dir (`context-live`, rewritten every turn by a Stop hook). `/events` is a
 Server-Sent-Events stream, `/state` a JSON snapshot; the page reconnects by itself and shows
-"offline" while the server is gone. Plain 2D canvas, ~6 ms a frame at 1080p. "Speaking" is read from `say.pid` (no audio analysis); only
+"offline" while the server is gone. Plain 2D canvas, ~6 ms a frame at 1080p, drawn at `TALK_UI_FPS` (30) while
+idle/thinking and `TALK_UI_FPS_ACTIVE` (60) while listening/speaking — `/talk:configure ui fps 20 45` to give whisper
+more of the CPU; the page reads both from the server on connect. "Speaking" is read from `say.pid` (no audio analysis); only
 what goes through the speak tool is shown as her line — replies spoken by the Stop hook are not.
 
 ## How it works

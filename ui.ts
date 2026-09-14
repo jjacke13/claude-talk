@@ -11,6 +11,7 @@ export type UiEvent =
   | { type: 'user'; text: string; ts: number }
   | { type: 'assistant'; text: string; ts: number }
   | { type: 'context'; pct: number }
+  | { type: 'config'; fps: { idle: number; active: number } }
 export type Signal = 'press' | 'wake' | 'user' | 'speaking' | 'silent' | 'timeout'
 
 export const TRANSCRIPT_MAX = 50
@@ -44,6 +45,7 @@ export function reduceState(prev: UiState, s: Signal): UiState {
 let state: UiState = 'idle'
 let transcript: UiEvent[] = []
 let contextPct: number | undefined
+let fps = { idle: 30, active: 60 }   // from TALK_UI_FPS / TALK_UI_FPS_ACTIVE; the page falls back to these too
 let active = false
 let timer: ReturnType<typeof setTimeout> | undefined
 const clients = new Set<ReadableStreamDefaultController<Uint8Array>>()
@@ -83,7 +85,7 @@ function readContext(): number | undefined {
 }
 
 function snapshot(): string {
-  return JSON.stringify({ state, context: contextPct, events: transcript })
+  return JSON.stringify({ state, context: contextPct, fps, events: transcript })
 }
 
 function events(): Response {
@@ -92,7 +94,8 @@ function events(): Response {
     start(c) {
       ctl = c
       clients.add(c)
-      // Late joiner: current state, context and the recent transcript first.
+      // Late joiner: frame-rate config, current state, context and the recent transcript first.
+      c.enqueue(enc.encode(sseFrame({ type: 'config', fps })))
       c.enqueue(enc.encode(sseFrame({ type: 'state', state })))
       if (contextPct !== undefined) c.enqueue(enc.encode(sseFrame({ type: 'context', pct: contextPct })))
       for (const ev of transcript) c.enqueue(enc.encode(sseFrame(ev)))
@@ -105,6 +108,7 @@ function events(): Response {
 export function startUi(cfg: Config): void {
   if (cfg.TALK_UI !== 'on') return
   const port = Number(cfg.TALK_UI_PORT) || 7590
+  fps = { idle: Number(cfg.TALK_UI_FPS) || 30, active: Number(cfg.TALK_UI_FPS_ACTIVE) || 60 }
   let html: string
   try { html = readFileSync(new URL('./ui.html', import.meta.url), 'utf8') } catch (e) { log(`ui off: cannot read ui.html (${e})`); return }
   try {

@@ -103,6 +103,10 @@ PreToolUse narration opt-in `TALK_NARRATE`; `TALK_REPLY=voice` → channel meta 
   Chrome-MCP automation window reports visibilityState "hidden" and pauses rAF entirely (screenshots are forced paints) → do NOT
   gate draw() on document.hidden, and fps cannot be measured there. Client dedupes replayed (type, ts) after an SSE reconnect.
   context % = newest context-* by mtime (`context-live` rewritten every turn by the main session's Stop hook).
+  **0.3.2 fps cap** (2026-09-14, Vaios: Brave at 60 fps took ~30 % of a core from whisper): TALK_UI_FPS 30 idle/thinking,
+  TALK_UI_FPS_ACTIVE 60 listening/speaking; server sends `{type:'config', fps}` first on /events and in /state; page skips rAF
+  frames until 1000/fps elapsed (dt clamp 0.1 s). QUEUED, not done: lower point count knob; freeze drawing while whisper runs
+  (server knows: startRecording/transcribe → a `{type:'state'}`-like "busy" flag).
 - Not done: Vaios's real voice against hey_claudia.onnx (only synthetic voices so far — if it misses, lower TALK_WAKE_THRESHOLD or
   add voices to wake/voices and retrain), Greek voice download, VAD, streaming (needs Agent SDK/hades), SimpleX wiring, Windows wake.
 
