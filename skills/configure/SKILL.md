@@ -50,6 +50,10 @@ Keys and defaults:
 | `TALK_WAKE_MODEL` | `hey_claudia` | bare name = `<plugin-root>/models/<name>.onnx`; or an openwakeword prebuilt name (`hey_jarvis`), or a path |
 | `TALK_WAKE_FOLLOWUP_S` | `6` | seconds after Claudia stops speaking in which the next utterance needs no wake word |
 | `TALK_WAKE_BARGEIN` | `off` | `on` = the wake word also cuts Claudia off mid-sentence (her own voice can trigger the model — the talk key always interrupts) |
+| `TALK_STT_URL` | (empty) | transcription server, e.g. `http://127.0.0.1:7581/inference` (whisper.cpp `whisper-server`) or an OpenAI-compatible `/v1/audio/transcriptions`; empty = local `whisper-cli`; any failure falls back to whisper-cli |
+| `TALK_STT_LANG` | (empty) | language sent to the server; empty = `TALK_LANG`; `auto` allowed |
+| `TALK_STT_TOKEN` | (empty) | bearer token for hosted services — **never print it** (status says set/unset) |
+| `TALK_STT_TIMEOUT_MS` · `TALK_STT_MODEL` | `20000` · `whisper-1` | request timeout · `model` field (whisper-server ignores it; OpenAI-style APIs need it) |
 | `TALK_UI` | `off` | `on` = the server serves the companion page (orb + transcript) at `http://127.0.0.1:TALK_UI_PORT`; loopback only; applies at the next launch |
 | `TALK_UI_PORT` | `7590` | companion page port (edit the file directly) |
 | `TALK_UI_FPS` · `TALK_UI_FPS_ACTIVE` | `30` · `60` | page frame rate while idle/thinking · while listening/speaking (lower = less CPU taken from whisper) |
@@ -69,14 +73,19 @@ Keys and defaults:
    exists: `test -x <state-dir>/wake/venv/bin/python` (absent → "wake word runtime not set up: see README 'Wake word'").
    If `TALK_WAKE_MODEL` is a bare name, `test -f <plugin-root>/models/<name>.onnx`.
    Companion UI: show `TALK_UI`; when `on`, print the URL `http://127.0.0.1:<TALK_UI_PORT>`.
+   Transcription: show `TALK_STT_URL` (empty → "local whisper-cli"), `TALK_STT_LANG`, and `TALK_STT_TOKEN` as
+   **"set"/"unset" only — never echo the token**, not even part of it.
 5. Remind: push-to-talk is `bun <plugin-root>/bin/talk` (or `talk` if on PATH); replies are spoken per `TALK_SPEAK`;
    with `TALK_WAKE=on`, saying the wake word does the same as the key.
 
-### `lang <code>` · `model <path>` · `voice <path>` · `speak mirror|on|off` · `reply voice|both` · `player <cmd>` · `max <chars>` · `wake on|off` · `wakeword <name>` · `wakemodel <path>` · `followup <s>` · `ui on|off` · `ui fps <idle> [active]` · `bargein on|off`
+### `lang <code>` · `model <path>` · `voice <path>` · `speak mirror|on|off` · `reply voice|both` · `player <cmd>` · `max <chars>` · `wake on|off` · `wakeword <name>` · `wakemodel <path>` · `followup <s>` · `ui on|off` · `ui fps <idle> [active]` · `bargein on|off` · `stt <url|off>` · `stt lang <code|auto>` · `stt token <token>`
 
 Set the matching key (`TALK_LANG`, `TALK_MODEL`, `TALK_VOICE`, `TALK_SPEAK`, `TALK_PLAYER`, `TALK_RECORDER`, `TALK_KEY`, `TALK_SPEED`, `TALK_NARRATE`, `TALK_REPLY`,
 `TALK_MAX_SPEAK_CHARS`, `TALK_WAKE`, `TALK_WAKE_WORD`, `TALK_WAKE_MODEL`, `TALK_WAKE_FOLLOWUP_S`, `TALK_UI`). `ui fps <idle> [active]` sets
-`TALK_UI_FPS` and, when given, `TALK_UI_FPS_ACTIVE` (integers 1–120; refuse anything else). Keep other lines. Create the directory with `mkdir -p` if needed.
+`TALK_UI_FPS` and, when given, `TALK_UI_FPS_ACTIVE` (integers 1–120; refuse anything else). `stt <url>` sets `TALK_STT_URL`
+(must start with `http://` or `https://`; `stt off` writes an empty value), `stt lang` sets `TALK_STT_LANG`, `stt token` sets
+`TALK_STT_TOKEN` — after writing a token run `chmod 600 <state-dir>/config` and confirm with "token set", never with the value.
+STT changes apply to the next utterance (no relaunch). Keep other lines. Create the directory with `mkdir -p` if needed.
 For `model`/`voice`, `test -f` the path first and refuse with a clear message if absent
 (a non-English model needs a multilingual ggml, e.g. `ggml-base.bin`, not `*.en.bin`).
 For `wake on`, `test -x <state-dir>/wake/venv/bin/python` first; if absent, still write the key but print the

@@ -103,6 +103,11 @@ PreToolUse narration opt-in `TALK_NARRATE`; `TALK_REPLY=voice` → channel meta 
   Chrome-MCP automation window reports visibilityState "hidden" and pauses rAF entirely (screenshots are forced paints) → do NOT
   gate draw() on document.hidden, and fps cannot be measured there. Client dedupes replayed (type, ts) after an SSE reconnect.
   context % = newest context-* by mtime (`context-live` rewritten every turn by the main session's Stop hook).
+  **0.4.0 pluggable STT** (2026-09-14): `voice.ts transcribeHttp` = multipart POST (file/language/response_format/model +
+  bearer) to TALK_STT_URL, `{text}` back; `transcribe()` tries it first, ANY failure → one log line → whisper-cli. Tested with an
+  in-test Bun.serve (voice.test.ts: fields, bearer, TALK_LANG fallback, 500 → fallback) and live against the laptop's whisper-server
+  (127.0.0.1:7581/inference, Vulkan, ggml-small q8): 0.9 s vs 1.2 s local. Bun's multipart parser reports .wav as audio/x-wav
+  whatever was sent. Added TALK_STT_MODEL=whisper-1 beyond the asked keys: OpenAI-style endpoints reject requests without `model`.
   **0.3.2 fps cap** (2026-09-14, Vaios: Brave at 60 fps took ~30 % of a core from whisper): TALK_UI_FPS 30 idle/thinking,
   TALK_UI_FPS_ACTIVE 60 listening/speaking; server sends `{type:'config', fps}` first on /events and in /state; page skips rAF
   frames until 1000/fps elapsed (dt clamp 0.1 s). QUEUED, not done: lower point count knob; freeze drawing while whisper runs

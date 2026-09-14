@@ -26,6 +26,14 @@ export function defaultsFor(platform: string) {
     TALK_SPEED: '1.0',
     TALK_NARRATE: 'off',
     TALK_REPLY: 'both',
+    // Transcription server (voice.ts transcribeHttp). '' = one-shot local whisper-cli. Any failure
+    // falls back to whisper-cli. Works with whisper.cpp's whisper-server (/inference) and
+    // OpenAI-compatible /v1/audio/transcriptions endpoints (which need `model`).
+    TALK_STT_URL: '',
+    TALK_STT_LANG: '',              // '' = TALK_LANG; 'auto' allowed
+    TALK_STT_TOKEN: '',             // bearer token for hosted services — never printed
+    TALK_STT_TIMEOUT_MS: '20000',
+    TALK_STT_MODEL: 'whisper-1',    // `model` form field; whisper-server ignores it, OpenAI-style APIs require it
     // Wake word (wake.ts). TALK_WAKE_WORD is what the user says; TALK_WAKE_MODEL is the openwakeword
     // model that hears it: a bare name resolves to the plugin's models/<name>.onnx (hey_claudia ships
     // there, trained by bin/wake-train), else an openwakeword prebuilt name (hey_jarvis) or a path.

@@ -80,6 +80,8 @@ moves the directory). Write it directly or, inside a session, use `/talk:configu
 | `player <cmd>` | `TALK_PLAYER` | PipeWire on Linux, SoX `play` elsewhere | argv template, `{rate}` placeholder, raw s16 mono on stdin |
 | `recorder <cmd>` | `TALK_RECORDER` | PipeWire on Linux, SoX `rec` elsewhere | argv template, must write raw s16le 16 kHz mono to `{raw}` |
 | `max <chars>` | `TALK_MAX_SPEAK_CHARS` | `1200` | sentence-boundary cut for long replies |
+| `stt <url\|off>` | `TALK_STT_URL` | (empty) | warm/remote transcription server (whisper.cpp `whisper-server` `/inference`, or OpenAI-style `/v1/audio/transcriptions`); empty = local whisper-cli; failures fall back to whisper-cli |
+| `stt lang <code\|auto>` · `stt token <t>` | `TALK_STT_LANG` · `TALK_STT_TOKEN` | (empty) | language for the server (empty = `TALK_LANG`) · bearer token — never print it; `TALK_STT_TIMEOUT_MS` 20000, `TALK_STT_MODEL` whisper-1 |
 | `ui on\|off` | `TALK_UI` | `off` | companion page (orb + transcript) at `http://127.0.0.1:7590` (`TALK_UI_PORT`); loopback only; next launch |
 
 Example, English defaults with models elsewhere:

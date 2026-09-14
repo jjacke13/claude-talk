@@ -67,7 +67,7 @@ keeps the written reply for details worth reading.
 ## Configure
 
 `/talk:configure` — status; `lang el`, `model <ggml>`, `voice <onnx>`, `speak on|off|mirror`,
-`player <cmd>`, `max <chars>`, `key <KEY_NAME>`, `speed <0.5-3>`; `voices` lists where to download more. Config lives in
+`player <cmd>`, `max <chars>`, `key <KEY_NAME>`, `speed <0.5-3>`, `stt <url|off>`; `voices` lists where to download more. Config lives in
 `~/.claude/channels/talk/config` (`KEY=value`; shell env overrides). Non-English needs a
 multilingual whisper model (`ggml-base.bin`, not `*.en.bin`) and a matching piper voice.
 
@@ -137,6 +137,28 @@ from [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices), ~75 MB
 own feature extractor and fits a small MLP written as ONNX. Validation with piper through the speaker:
 silence 0.016, "hey claudia" 0.998, "hey jarvis" 0.105, "hey claude" 0.036 (threshold 0.5). Trained on
 synthetic voices only — if your voice scores low, lower `TALK_WAKE_THRESHOLD` or retrain with more voices.
+
+## Transcription server (optional)
+
+By default every utterance runs a one-shot `whisper-cli` (model load included). A warm server is
+faster and can use another backend or machine: point `TALK_STT_URL` at it and `transcribe()` POSTs
+the WAV as multipart (`file`, `language`, `response_format=json`, `model`) and reads `{text}`.
+Any failure — connection, non-2xx, timeout (`TALK_STT_TIMEOUT_MS`, 20 s), bad reply — logs one line
+and falls back to `whisper-cli`, so voice never breaks because a server did.
+
+whisper.cpp's own server, any backend (CPU, Vulkan, CUDA, Metal):
+
+```
+whisper-server -m ~/.hermes/models/ggml-small.bin --host 127.0.0.1 --port 7581   # warm, loopback only
+/talk:configure stt http://127.0.0.1:7581/inference                              # → TALK_STT_URL
+```
+
+OpenAI-compatible endpoints work too (`/v1/audio/transcriptions`: OpenAI, Groq, a local
+faster-whisper server…): `stt https://…/v1/audio/transcriptions`, `stt token <key>` (bearer; the
+config file is chmod 600 and the token is never printed), and `TALK_STT_MODEL` for the model name
+(`whisper-1` default; whisper-server ignores it). `stt lang auto` lets the server detect the language;
+empty = `TALK_LANG`. Measured here: ggml-small q8 on Vulkan via whisper-server 0.9 s vs 1.2 s for
+whisper-cli with ggml-base.
 
 ## Companion UI (optional)
 

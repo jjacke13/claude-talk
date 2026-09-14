@@ -84,7 +84,29 @@ export function wrapWav(raw: string, wav: string, rate = 16000): void {
   try { unlinkSync(raw) } catch {}
 }
 
+// A warm or remote STT server: multipart POST, {text} back (whisper.cpp's whisper-server and
+// OpenAI-compatible endpoints share that shape). Throws on anything but a 2xx with a text.
+export async function transcribeHttp(cfg: Config, wav: string): Promise<string> {
+  const form = new FormData()
+  form.append('file', new Blob([readFileSync(wav)], { type: 'audio/wav' }), 'x.wav')
+  form.append('language', cfg.TALK_STT_LANG || cfg.TALK_LANG)
+  form.append('response_format', 'json')
+  form.append('model', cfg.TALK_STT_MODEL)
+  const headers: Record<string, string> = cfg.TALK_STT_TOKEN ? { authorization: `Bearer ${cfg.TALK_STT_TOKEN}` } : {}
+  const res = await fetch(cfg.TALK_STT_URL, { method: 'POST', body: form, headers, signal: AbortSignal.timeout(Number(cfg.TALK_STT_TIMEOUT_MS) || 20000) })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const text = (await res.json())?.text
+  if (typeof text !== 'string') throw new Error('no "text" in the reply')
+  return text.replace(/\s+/g, ' ').trim()
+}
+
+// TALK_STT_URL first; on any failure (network, non-2xx, bad JSON, timeout) one log line and the
+// local whisper-cli, so voice never breaks because a server did.
 export async function transcribe(cfg: Config, wav: string): Promise<string> {
+  if (cfg.TALK_STT_URL) {
+    try { return await transcribeHttp(cfg, wav) }
+    catch (e) { log(`stt server failed (${e instanceof Error ? e.message : e}) — falling back to whisper-cli`) }
+  }
   requireFile(cfg.TALK_MODEL, 'TALK_MODEL')
   const w = Bun.spawn(['whisper-cli', '-m', cfg.TALK_MODEL, '-l', cfg.TALK_LANG, '-f', wav, '-nt', '-np'], { stdout: 'pipe', stderr: 'ignore' })
   const text = (await new Response(w.stdout).text()).replace(/\s+/g, ' ').trim()
