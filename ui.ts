@@ -1,7 +1,7 @@
 // Companion UI: a local page (ui.html) with an orb that mirrors the conversation. TALK_UI=on makes
 // the channel server serve it on 127.0.0.1:TALK_UI_PORT — GET / (page), /events (SSE), /state (JSON).
 // The rest of the server reports through the tiny emitters below; when the UI is off they are no-ops.
-import { readdirSync, readFileSync } from 'fs'
+import { readdirSync, readFileSync, statSync } from 'fs'
 import { join } from 'path'
 import { SAY_PID, STATE_DIR, alive, log, type Config } from './voice.ts'
 
@@ -70,10 +70,12 @@ export const uiListening = (how: 'press' | 'wake' = 'press'): void => signal(how
 export function uiUser(text: string): void { if (!active) return; broadcast({ type: 'user', text, ts: Date.now() }); signal('user') }
 export function uiAssistant(text: string): void { if (active) broadcast({ type: 'assistant', text, ts: Date.now() }) }
 
-// Newest context-* file in the state dir holds a percentage written by an external Stop hook.
+// The most recently written context-* file in the state dir (context-live, rewritten every turn by
+// an external Stop hook) holds a percentage.
 function readContext(): number | undefined {
   try {
-    const name = readdirSync(STATE_DIR).filter(n => n.startsWith('context-')).sort().pop()
+    const name = readdirSync(STATE_DIR).filter(n => n.startsWith('context-'))
+      .map(n => ({ n, t: statSync(join(STATE_DIR, n)).mtimeMs })).sort((a, b) => b.t - a.t)[0]?.n
     if (!name) return
     const pct = Number(readFileSync(join(STATE_DIR, name), 'utf8').trim())
     return Number.isFinite(pct) ? Math.max(0, Math.min(100, Math.round(pct))) : undefined

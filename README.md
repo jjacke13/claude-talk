@@ -142,13 +142,14 @@ synthetic voices only — if your voice scores low, lower `TALK_WAKE_THRESHOLD` 
 
 `/talk:configure ui on` (`TALK_UI=on`), relaunch the session, open **http://127.0.0.1:7590** in a browser
 next to the terminal (`TALK_UI_PORT` to move it; loopback only, no external assets, no dependencies).
-One big orb mirrors the conversation — breathing when idle, ripples while listening (key held or
-wake word heard), shimmering arcs while Claude thinks, pulsing while she speaks — with the latest
+A sphere of ~2600 points mirrors the conversation — slowly turning and breathing when idle, opening
+and scattering while listening (key held or wake word heard), spinning up with streaming parallels
+while Claude thinks, pulsing in latitude bands while she speaks (blue/green/violet/amber) — with the latest
 line you said (dim) and her latest spoken line (bright) underneath; `t` or the corner button flips
 to the plain transcript (last 50 lines). Corners: clock, state, and the context percentage when a
-`context-*` file exists in the state dir (written by an external Stop hook). `/events` is a
+`context-*` file exists in the state dir (`context-live`, rewritten every turn by a Stop hook). `/events` is a
 Server-Sent-Events stream, `/state` a JSON snapshot; the page reconnects by itself and shows
-"offline" while the server is gone. "Speaking" is read from `say.pid` (no audio analysis); only
+"offline" while the server is gone. Plain 2D canvas, ~6 ms a frame at 1080p. "Speaking" is read from `say.pid` (no audio analysis); only
 what goes through the speak tool is shown as her line — replies spoken by the Stop hook are not.
 
 ## How it works

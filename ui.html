@@ -55,7 +55,7 @@
   'use strict'
   // --- state ---------------------------------------------------------------------------------
   const HUES = { idle: 205, listening: 160, thinking: 262, speaking: 32, offline: 0 }
-  let state = 'offline', hue = HUES.idle, energy = 0.2, events = []
+  let state = 'offline', hue = HUES.idle, events = []
   const $ = id => document.getElementById(id)
   const canvas = $('orb'), ctx = canvas.getContext('2d')
 
@@ -76,6 +76,8 @@
     const el = $('state'); el.textContent = s; el.className = 'corner ' + s
   }
   function addLine(ev) {
+    // A reconnect replays the server's history: the same (type, ts) again is not a new line.
+    if (events.some(e => e.ts === ev.ts && e.type === ev.type)) return
     events = events.concat([ev]).slice(-50)
     const el = $(ev.type)
     el.classList.remove('show')
@@ -109,74 +111,97 @@
   const tick = () => { const d = new Date(); $('clock').textContent = d.toTimeString().slice(0, 5) }
   tick(); setInterval(tick, 5000)
 
-  // --- orb -------------------------------------------------------------------------------------
-  const rings = []          // listening ripples: {r0, born}
-  let lastRing = 0, dpr = 1
+  // --- particle sphere -------------------------------------------------------------------------
+  // N points on a unit sphere (fibonacci lattice), rotated on two axes and projected with a touch of
+  // perspective; depth drives size and alpha. Per-state motion parameters are eased (~400 ms) so
+  // state changes glide. Plain 2D canvas, additive squares, no sorting needed for additive blending.
+  const N = 2600, GOLD = Math.PI * (3 - Math.sqrt(5))
+  const PX = new Float32Array(N), PY = new Float32Array(N), PZ = new Float32Array(N)
+  const PH = new Float32Array(N), FLY = new Uint8Array(N), BUCKET = new Uint8Array(N)
+  const SX = new Float32Array(N), SY = new Float32Array(N), SS = new Float32Array(N)
+  for (let i = 0; i < N; i++) {
+    const y = 1 - 2 * (i + 0.5) / N, r = Math.sqrt(1 - y * y), a = i * GOLD
+    PX[i] = r * Math.cos(a); PY[i] = y; PZ[i] = r * Math.sin(a)
+    PH[i] = Math.random() * Math.PI * 2
+    FLY[i] = Math.random() < 0.07 ? 1 : 0          // the few that drift off while listening
+  }
+  // motion parameters per state: rotation speeds (rad/s), radius scale, jitter, swirl, band amplitude
+  const MOTION = {
+    idle:      { ry: 0.18, rx: 0.05, rad: 1.00, jit: 0.00, swirl: 0.0, band: 0.00, glow: 0.25 },
+    listening: { ry: 0.10, rx: 0.03, rad: 1.06, jit: 0.16, swirl: 0.0, band: 0.00, glow: 0.55 },
+    thinking:  { ry: 0.85, rx: 0.22, rad: 0.92, jit: 0.02, swirl: 1.6, band: 0.00, glow: 0.80 },
+    speaking:  { ry: 0.25, rx: 0.06, rad: 1.02, jit: 0.00, swirl: 0.0, band: 0.10, glow: 1.00 },
+    offline:   { ry: 0.04, rx: 0.00, rad: 0.90, jit: 0.00, swirl: 0.0, band: 0.00, glow: 0.05 },
+  }
+  const cur = { ...MOTION.idle }
+  let ax = 0.4, ay = 0, swirlPhase = 0, dpr = 1, last = 0
   function resize() {
     dpr = Math.min(2, devicePixelRatio || 1)
     canvas.width = innerWidth * dpr; canvas.height = innerHeight * dpr
   }
   addEventListener('resize', resize); resize()
+  // Hidden tab: the browser stops requestAnimationFrame itself (no work done); on return, `last` is
+  // reset so the first frame does not integrate the whole absence. (An explicit document.hidden
+  // guard is wrong: occluded windows report "hidden" while rAF still runs.)
+  document.addEventListener('visibilitychange', () => { last = 0 })
 
   function draw(now) {
+    const dt = last ? Math.min(0.05, (now - last) / 1000) : 0.016
+    last = now
     const t = now / 1000
+    const target = MOTION[state] ?? MOTION.idle
+    const k = 1 - Math.exp(-dt / 0.13)              // ~95 % of the way in 400 ms
+    for (const key in cur) cur[key] += (target[key] - cur[key]) * k
+    hue += (( HUES[state] ?? HUES.idle) - hue) * k
+    ax += cur.rx * dt; ay += cur.ry * dt
+    swirlPhase += cur.swirl * dt                    // accumulated, so easing swirl to 0 stops the flow instead of snapping it
+
     const w = canvas.width, h = canvas.height, cx = w / 2, cy = h * 0.42
-    const base = Math.min(w, h) * 0.17
-    // per-state motion; `energy` eases so transitions glide instead of snapping
-    let target = 0.2, breathe
-    if (state === 'idle') { target = 0.25; breathe = 1 + 0.035 * Math.sin(t * 0.9) }
-    else if (state === 'listening') { target = 0.55; breathe = 1 + 0.03 * Math.sin(t * 2.2) }
-    else if (state === 'thinking') { target = 0.8; breathe = 1 + 0.05 * Math.sin(t * 4.5) }
-    else if (state === 'speaking') { target = 1; breathe = 1 + 0.16 * Math.abs(Math.sin(t * 6.3)) * (0.6 + 0.4 * Math.sin(t * 1.7 + 1)) }
-    else { target = 0.05; breathe = 1 }
-    energy += (target - energy) * 0.04
-    const th = HUES[state] ?? HUES.idle
-    hue += (th - hue) * 0.05
-    const r = base * breathe
+    const breathe = state === 'idle' ? 1 + 0.03 * Math.sin(t * 0.8) : 1 + 0.012 * Math.sin(t * 1.6)
+    const R = Math.min(w, h) * 0.2 * cur.rad * breathe
+    const env = Math.abs(Math.sin(t * 6.3)) * (0.6 + 0.4 * Math.sin(t * 1.7 + 1))   // speaking amplitude
+    const cay = Math.cos(ay), say = Math.sin(ay), cax = Math.cos(ax), sax = Math.sin(ax)
 
     ctx.clearRect(0, 0, w, h)
     ctx.globalCompositeOperation = 'lighter'
-
-    // halo
-    const halo = ctx.createRadialGradient(cx, cy, r * 0.2, cx, cy, r * (2.6 + energy))
-    halo.addColorStop(0, `hsla(${hue}, 90%, 62%, ${0.18 + 0.22 * energy})`)
-    halo.addColorStop(0.5, `hsla(${hue + 20}, 90%, 55%, ${0.05 + 0.08 * energy})`)
+    const halo = ctx.createRadialGradient(cx, cy, R * 0.1, cx, cy, R * (2.2 + cur.glow))
+    halo.addColorStop(0, `hsla(${hue}, 90%, 60%, ${0.10 + 0.16 * cur.glow})`)
+    halo.addColorStop(0.55, `hsla(${hue + 20}, 90%, 55%, ${0.03 + 0.05 * cur.glow})`)
     halo.addColorStop(1, 'hsla(0,0%,0%,0)')
     ctx.fillStyle = halo; ctx.fillRect(0, 0, w, h)
 
-    // core
-    const core = ctx.createRadialGradient(cx - r * 0.25, cy - r * 0.3, r * 0.05, cx, cy, r)
-    core.addColorStop(0, `hsla(${hue + 30}, 100%, 92%, .95)`)
-    core.addColorStop(0.35, `hsla(${hue}, 95%, 66%, .85)`)
-    core.addColorStop(1, `hsla(${hue - 15}, 90%, 40%, .15)`)
-    ctx.fillStyle = core
-    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill()
-
-    // thinking: rotating shimmer arcs
-    if (state === 'thinking') {
-      for (let i = 0; i < 3; i++) {
-        const a = t * (1.6 + i * 0.5) + i * 2.1
-        ctx.strokeStyle = `hsla(${hue + 40}, 100%, 80%, ${0.35 - i * 0.08})`
-        ctx.lineWidth = 2 * dpr
-        ctx.beginPath(); ctx.arc(cx, cy, r * (1.15 + i * 0.12), a, a + 1.4); ctx.stroke()
+    // project every point; bucket by depth so fillStyle is set 8 times, not N times
+    for (let i = 0; i < N; i++) {
+      let x = PX[i], y = PY[i], z = PZ[i]
+      // thinking: differential rotation — latitudes slide past each other, points stream along parallels
+      if (swirlPhase > 0) {
+        const s = swirlPhase * (0.35 + 0.65 * y * y) * (y < 0 ? -1 : 1), cs = Math.cos(s), sn = Math.sin(s)
+        const x2 = x * cs - z * sn; z = x * sn + z * cs; x = x2
       }
+      // radius: listening jitter (+ flyers), speaking latitude bands
+      let rr = 1
+      if (cur.jit > 0.001) {
+        rr += cur.jit * (0.5 * Math.sin(t * 1.7 + PH[i]) + 0.5 * Math.sin(t * 2.9 + PH[i] * 2.1))
+        if (FLY[i]) rr += cur.jit * 2.2 * (0.5 + 0.5 * Math.sin(t * 0.9 + PH[i]))
+      }
+      if (cur.band > 0.001) rr += cur.band * env * Math.sin(y * 7 - t * 5)
+      // rotate around Y then X
+      const x1 = x * cay + z * say, z1 = -x * say + z * cay
+      const y2 = y * cax - z1 * sax, z2 = y * sax + z1 * cax
+      const persp = 1 + z2 * 0.28, d = (z2 + 1) * 0.5      // z2 towards the viewer → bigger, brighter
+      SX[i] = cx + x1 * rr * R * persp
+      SY[i] = cy + y2 * rr * R * persp
+      SS[i] = (0.7 + 1.9 * d) * dpr
+      BUCKET[i] = Math.min(7, (d * 8) | 0)
     }
-    // listening: ripples expanding outward
-    if (state === 'listening' && now - lastRing > 650) { rings.push({ born: now }); lastRing = now }
-    for (let i = rings.length - 1; i >= 0; i--) {
-      const age = (now - rings[i].born) / 1800
-      if (age > 1) { rings.splice(i, 1); continue }
-      ctx.strokeStyle = `hsla(${hue}, 90%, 70%, ${(1 - age) * 0.5})`
-      ctx.lineWidth = (2.5 - 2 * age) * dpr
-      ctx.beginPath(); ctx.arc(cx, cy, r * (1.05 + age * 1.9), 0, Math.PI * 2); ctx.stroke()
+    for (let b = 0; b < 8; b++) {
+      const d = (b + 0.5) / 8
+      ctx.fillStyle = `hsla(${hue + 10 * d}, 90%, ${52 + 34 * d}%, ${0.14 + 0.72 * d})`
+      for (let i = 0; i < N; i++) if (BUCKET[i] === b) { const s = SS[i]; ctx.fillRect(SX[i] - s / 2, SY[i] - s / 2, s, s) }
     }
-    // speaking: a second, softer pulse ring
-    if (state === 'speaking') {
-      const p = Math.abs(Math.sin(t * 6.3 + 0.6))
-      ctx.strokeStyle = `hsla(${hue + 10}, 95%, 75%, ${0.15 + 0.3 * p})`
-      ctx.lineWidth = 3 * dpr
-      ctx.beginPath(); ctx.arc(cx, cy, r * (1.08 + 0.25 * p), 0, Math.PI * 2); ctx.stroke()
-    }
+    // soft glow on the nearest points only
+    ctx.fillStyle = `hsla(${hue + 20}, 100%, 85%, ${0.05 + 0.08 * cur.glow})`
+    for (let i = 0; i < N; i++) if (BUCKET[i] >= 6) { const s = SS[i] * 3; ctx.fillRect(SX[i] - s / 2, SY[i] - s / 2, s, s) }
     ctx.globalCompositeOperation = 'source-over'
     requestAnimationFrame(draw)
   }

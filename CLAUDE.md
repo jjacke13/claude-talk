@@ -79,7 +79,30 @@ PreToolUse narration opt-in `TALK_NARRATE`; `TALK_REPLY=voice` → channel meta 
   uiListening('press') from hold's onPress; wake.ts calls uiListening('wake') in onDetect. `alive(pidFile)` moved to voice.ts.
   "speaking" = say.pid alive (200 ms poll); listening times out 30 s, thinking 120 s (text-only answers). Context % = newest
   `context-*` file in the state dir (10 s poll). Tested with a throwaway emitter + Chrome at 1920 and 960 wide, NOT the live server.
-  Gotcha: `pkill -f <script>` kills the calling shell too (pattern matches it) — use `pkill -f "bun [/]tmp.*name"`.
+  Gotcha: `pkill -f <script>` kills the calling shell too (pattern matches it) — anchor it: `pkill -f 'name\.ts
+- Not done: Vaios's real voice against hey_claudia.onnx (only synthetic voices so far — if it misses, lower TALK_WAKE_THRESHOLD or
+  add voices to wake/voices and retrain), Greek voice download, VAD, streaming (needs Agent SDK/hades), SimpleX wiring, Windows wake.
+
+## Wake word — live findings (2026-09-13, main session)
+- QUEUED FIX: follow-up window opens only after a wake-word turn (`armed` set in wake.ts `turn()`).
+  It must open after ANY spoken turn — hold-to-talk too. Plan: hoist `armed` to module scope,
+  `export function armFollowUp()`, and in server.ts wrap the hold callback: `startHold(cfg, t => { armFollowUp(); notify(t) })`.
+- From across the room the detector hears the wake word but the sentence RMS sits at ~5‰ (< TALK_WAKE_RMS 10‰) → "nothing heard". Either lower TALK_WAKE_RMS to ~0.006 or speak up after the beep; floor is ~2‰.
+- Claudia must never SAY the wake word: her own voice through the speaker triggers barge-in (0.94).
+- **0.2.1:** wake detections while `say.pid` is alive are ignored unless `TALK_WAKE_BARGEIN=on` —
+  the hey_claudia model fires on Claudia's own sentences (same piper voice in training, 0.99 live).
+  Proper fix later: retrain with many Cori/Ryan-voiced sentences as negatives (bin/wake-train).
+- **0.2.2:** a wake/follow-up capture is dropped the moment `say.pid` comes alive — otherwise
+  Claudia's reply to a key turn (or after a false wake) is recorded and transcribed as the user
+  (live 2026-09-13: her own sentence came back as a channel message).
+`.
+  **0.3.1 particle sphere** (2026-09-14): 2600-point fibonacci sphere, two-axis rotation, perspective + depth buckets (8 fillStyle
+  sets per frame, additive squares, no sort), per-state MOTION params eased with k=1−e^(−dt/0.13) (~400 ms); listening = radius
+  jitter + 7 % "flyers", thinking = differential rotation via an ACCUMULATED swirlPhase (swirl·t snapped when easing out),
+  speaking = latitude bands × the old envelope. Measured: math 0.2 ms/frame (Bun), canvas ~6 ms incl. forced readback.
+  Chrome-MCP automation window reports visibilityState "hidden" and pauses rAF entirely (screenshots are forced paints) → do NOT
+  gate draw() on document.hidden, and fps cannot be measured there. Client dedupes replayed (type, ts) after an SSE reconnect.
+  context % = newest context-* by mtime (`context-live` rewritten every turn by the main session's Stop hook).
 - Not done: Vaios's real voice against hey_claudia.onnx (only synthetic voices so far — if it misses, lower TALK_WAKE_THRESHOLD or
   add voices to wake/voices and retrain), Greek voice download, VAD, streaming (needs Agent SDK/hades), SimpleX wiring, Windows wake.
 
