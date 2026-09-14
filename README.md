@@ -98,8 +98,12 @@ pure-Python `openwakeword` pip-installed with `--no-deps` into a venv under the 
 nix develop --builders ''            # --builders '' on this laptop: remote builders hang
 python3 -m venv --system-site-packages ~/.claude/channels/talk/wake/venv
 ~/.claude/channels/talk/wake/venv/bin/pip install --no-deps openwakeword
+~/.claude/channels/talk/wake/venv/bin/python -c 'import openwakeword.utils as u; u.download_models()'   # base models (melspectrogram, embedding)
 ~/.claude/channels/talk/wake/venv/bin/python bin/wake-check.py 5 models/hey_claudia.onnx   # say it → score
 ```
+
+Redo all of this after a `nix-collect-garbage`: the venv's `python3` is a symlink into the store and vanishes
+with it ("wake word off: …venv/bin/python missing" in talk.log).
 
 The venv sees the nix packages only through the `PYTHONPATH` the dev shell exports, which is why
 `bin/wake-detector` wraps the detector in `nix develop`. Mic path: PortAudio → ALSA `default` → PipeWire.
