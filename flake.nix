@@ -1,7 +1,9 @@
 {
   description = "claude-talk — local voice in/out for Claude Code (whisper.cpp + piper)";
 
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
+  # Must track the HOST release: the wake mic loads the host PipeWire ALSA plugin, which needs
+  # the same (or newer) glibc as this shell (25.11 vs a 26.05 host = "Invalid sample rate").
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
   # Kokoro TTS only: nixos-25.11 has no sherpa-onnx. Locked to the rev the host already runs.
   inputs.nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
 
