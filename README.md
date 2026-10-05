@@ -174,7 +174,7 @@ it over `<state-dir>/kokoro.sock`: one JSON line in (`text`, `sid`, `speed` = `T
 s16le 24 kHz back **sentence by sentence**, so playback starts after the first sentence. It exits
 after `TALK_KOKORO_IDLE_S` (3600) idle seconds. Any failure before the first audio — assets missing,
 server not up within 8 s, no audio within 10 s — logs one line and that utterance uses piper.
-`bin/tts` (ogg voice bubbles) stays on piper.
+`bin/tts` (ogg voice bubbles, e.g. claude-simplex) follows `TALK_TTS` the same way, encoding to opus.
 
 | key | default |
 |---|---|
