@@ -164,6 +164,29 @@ config file is chmod 600 and the token is never printed), and `TALK_STT_MODEL` f
 empty = `TALK_LANG`. Measured here: ggml-small q8 on Vulkan via whisper-server 0.9 s vs 1.2 s for
 whisper-cli with ggml-base.
 
+## Kokoro voice (optional)
+
+`TALK_TTS=kokoro` speaks replies with Kokoro v1.0 (sherpa-onnx, CPU) instead of piper. The model
+stays loaded in one warm server, `bin/kokoro-server.py`, run through the flake's `kokoro` dev shell
+(sherpa-onnx's python bindings from nixos-unstable — 25.11 has none; no torch). `bin/say` starts it
+on demand (`setsid`, outlives the caller; the session's server also prewarms it at launch), talks to
+it over `<state-dir>/kokoro.sock`: one JSON line in (`text`, `sid`, `speed` = `TALK_SPEED`), raw
+s16le 24 kHz back **sentence by sentence**, so playback starts after the first sentence. It exits
+after `TALK_KOKORO_IDLE_S` (3600) idle seconds. Any failure before the first audio — assets missing,
+server not up within 8 s, no audio within 10 s — logs one line and that utterance uses piper.
+`bin/tts` (ogg voice bubbles) stays on piper.
+
+| key | default |
+|---|---|
+| `TALK_KOKORO_MODEL` | `~/.claude/channels/talk/models/kokoro-multi-lang-v1_0/model.onnx` (fp32; int8 ran slower than real time) |
+| `TALK_KOKORO_DIR` | `~/.claude/channels/talk/models/kokoro-int8-multi-lang-v1_0` (`voices.bin`, `tokens.txt`, `espeak-ng-data/`, `dict/`, lexicons) |
+| `TALK_KOKORO_SID` · `_LEXICON` · `_THREADS` · `_IDLE_S` | `3` (af_heart) · `lexicon-us-en.txt` (bare name = in the dir) · `4` · `3600` |
+
+Model, assets and threads are fixed per server process: after changing them,
+`pkill -f 'kokoro-server\.py'` (the next reply restarts it). Measured on an i7-1165G7: cold start
+3.6 s (once), then first audio 0.8 s for a three-sentence reply (piper: after the whole reply),
+RTF ≈ 0.33, ~460 MB RSS.
+
 ## Several sessions open? `TALK_HOME`
 
 The plugin is enabled globally, so every Claude Code session starts a talk server and the first one

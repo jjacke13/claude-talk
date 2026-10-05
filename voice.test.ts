@@ -1,9 +1,9 @@
 import { expect, test } from 'bun:test'
-import { mkdtempSync, writeFileSync } from 'fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { resolveConfig } from './talk.ts'
-import { transcribe, wrapWav } from './voice.ts'
+import { say, transcribe, wrapWav } from './voice.ts'
 
 function silentWav(): string {
   const dir = mkdtempSync(join(tmpdir(), 'talk-stt-'))
@@ -59,4 +59,44 @@ test('transcribe: server failure falls back to whisper-cli (here: TALK_MODEL mis
 test('stt defaults', () => {
   const c = resolveConfig('', {}, '/h')
   expect([c.TALK_STT_URL, c.TALK_STT_LANG, c.TALK_STT_TOKEN, c.TALK_STT_TIMEOUT_MS, c.TALK_STT_MODEL]).toEqual(['', '', '', '20000', 'whisper-1'])
+})
+
+// --- kokoro: fake warm server on a unix socket; TALK_PLAYER=tee records what would be played ---
+function kokoroCfg(dir: string, extra = '') {
+  return { ...resolveConfig(`TALK_TTS=kokoro\n${extra}`, {}, '/h'), TALK_PLAYER: `tee ${dir}/{rate}.raw`, TALK_VOICE: '/nonexistent/voice.onnx' }
+}
+const sockDir = () => mkdtempSync(join(tmpdir(), 'talk-k-'))   // short: AF_UNIX paths max out at 108 bytes
+
+test('kokoro: request line sent, streamed PCM reaches the player at 24 kHz', async () => {
+  const dir = sockDir(), sock = join(dir, 'k.sock'), pcm = Buffer.alloc(9600, 7)
+  let req = ''
+  const srv = Bun.listen({ unix: sock, socket: { data(s, d) { req += d; if (req.endsWith('\n')) { s.write(pcm.subarray(0, 4800)); s.write(pcm.subarray(4800)); s.end() } } } })
+  try {
+    const speech = await say(kokoroCfg(dir, 'TALK_SPEED=1.2'), 'Hello there.', sock)
+    expect(await speech.exited).toBe(0)
+    expect(JSON.parse(req)).toEqual({ text: 'Hello there.', sid: 3, speed: 1.2 })
+    expect(readFileSync(join(dir, '24000.raw'))).toEqual(pcm)
+  } finally { srv.stop(true) }
+})
+
+test('kokoro: server closes without audio → piper fallback (here: TALK_VOICE missing surfaces)', async () => {
+  const dir = sockDir(), sock = join(dir, 'k.sock')
+  const srv = Bun.listen({ unix: sock, socket: { data(s) { s.end() } } })
+  try { await expect(say(kokoroCfg(dir), 'hi', sock)).rejects.toThrow('TALK_VOICE not found: /nonexistent/voice.onnx') }
+  finally { srv.stop(true) }
+})
+
+test('kokoro: no server and no model → piper fallback, nothing spawned', async () => {
+  const dir = sockDir()
+  await expect(say(kokoroCfg(dir, 'TALK_KOKORO_MODEL=/nonexistent/k.onnx'), 'hi', join(dir, 'k.sock'))).rejects.toThrow('TALK_VOICE not found')
+})
+
+test('TALK_TTS=piper never touches the kokoro socket', async () => {
+  const dir = sockDir(), sock = join(dir, 'k.sock')
+  let connects = 0
+  const srv = Bun.listen({ unix: sock, socket: { open() { connects++ }, data() {} } })
+  try {
+    await expect(say({ ...kokoroCfg(dir), TALK_TTS: 'piper' }, 'hi', sock)).rejects.toThrow('TALK_VOICE not found')
+    expect(connects).toBe(0)
+  } finally { srv.stop(true) }
 })

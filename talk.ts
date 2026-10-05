@@ -24,6 +24,15 @@ export function defaultsFor(platform: string) {
     TALK_MAX_SPEAK_CHARS: '1200',
     TALK_KEY: 'KEY_RIGHTALT',
     TALK_SPEED: '1.0',
+    // TTS backend for spoken replies (bin/say). kokoro = warm sherpa-onnx server (bin/kokoro-server),
+    // any failure falls back to piper for that utterance. bin/tts (ogg bubbles) stays on piper.
+    TALK_TTS: 'piper',
+    TALK_KOKORO_DIR: '~/.claude/channels/talk/models/kokoro-int8-multi-lang-v1_0',   // voices.bin, tokens.txt, espeak-ng-data/, dict/, lexicons
+    TALK_KOKORO_MODEL: '~/.claude/channels/talk/models/kokoro-multi-lang-v1_0/model.onnx',   // fp32: the int8 one is slower than real time
+    TALK_KOKORO_SID: '3',            // speaker id; 3 = af_heart
+    TALK_KOKORO_LEXICON: 'lexicon-us-en.txt',   // bare name = inside TALK_KOKORO_DIR
+    TALK_KOKORO_THREADS: '4',        // 4 beat 8 on an i7-1165G7
+    TALK_KOKORO_IDLE_S: '3600',      // warm server exits after this long without a request (0 = never); ~460 MB RSS
     TALK_NARRATE: 'off',
     TALK_REPLY: 'both',
     // Transcription server (voice.ts transcribeHttp). '' = one-shot local whisper-cli. Any failure
@@ -96,6 +105,28 @@ export function activeHere(cfg: Pick<Config, "TALK_HOME">, projectDir: string | 
   if (!dirs.length) return true
   const here = (projectDir ?? "").replace(/\/+$/, "")
   return dirs.some(d => d === here)
+}
+
+// TALK_SPEED 1.0 = the voice's natural rate, clamped to 0.5–3 (piper inverts it into --length-scale).
+export function speechSpeed(cfg: Pick<Config, 'TALK_SPEED'>): number {
+  return Math.min(3, Math.max(0.5, Number(cfg.TALK_SPEED) || 1))
+}
+
+// --- kokoro (warm sherpa-onnx server, bin/kokoro-server.py) ---------------------------------
+export const KOKORO_RATE = 24000   // Kokoro v1.0 always synthesizes 24 kHz
+export const ttsBackend = (cfg: Pick<Config, 'TALK_TTS'>): 'piper' | 'kokoro' => cfg.TALK_TTS === 'kokoro' ? 'kokoro' : 'piper'
+
+// Server argv (model + assets are fixed per server process; sid and speed go per request).
+export function kokoroArgs(cfg: Config, sock: string): string[] {
+  const d = cfg.TALK_KOKORO_DIR, inDir = (p: string) => p.includes('/') ? p : `${d}/${p}`
+  return ['--sock', sock, '--model', cfg.TALK_KOKORO_MODEL, '--voices', `${d}/voices.bin`, '--tokens', `${d}/tokens.txt`,
+    '--data-dir', `${d}/espeak-ng-data`, '--dict-dir', `${d}/dict`, '--lexicon', inDir(cfg.TALK_KOKORO_LEXICON),
+    '--threads', String(Number(cfg.TALK_KOKORO_THREADS) || 4), '--idle', String(Number(cfg.TALK_KOKORO_IDLE_S) || 0)]
+}
+
+// One request line for the server.
+export function kokoroRequest(cfg: Config, text: string): string {
+  return JSON.stringify({ text, sid: Number(cfg.TALK_KOKORO_SID) || 0, speed: speechSpeed(cfg) }) + '\n'
 }
 
 // Markdown → something a TTS voice can read. Code is dropped, not read aloud.

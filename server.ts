@@ -10,11 +10,11 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { mkdir, readFile, readdir, rename, unlink } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
-import { activeHere, sortInbox } from './talk.ts'
+import { activeHere, sortInbox, ttsBackend } from './talk.ts'
 import { startHold } from './hold.ts'
 import { armFollowUp, cancelFollowUp, startWake } from './wake.ts'
 import { startUi, uiAssistant, uiListening, uiUser } from './ui.ts'
-import { enqueueSpeech, loadConfig, noteSpoken } from './voice.ts'
+import { enqueueSpeech, ensureKokoro, loadConfig, noteSpoken } from './voice.ts'
 import { sanitizeForSpeech } from './talk.ts'
 
 const STATE_DIR = process.env.TALK_STATE_DIR
@@ -110,6 +110,8 @@ if (ACTIVE) {
   startHold(loadConfig(), t => { armFollowUp(); notify(t) }, undefined, () => { cancelFollowUp(); uiListening('press') })
   startWake(loadConfig(), notify)   // TALK_WAKE=on: say the wake word instead (wake.ts)
   startUi(loadConfig())             // TALK_UI=on: companion page on 127.0.0.1:TALK_UI_PORT (ui.ts)
+  // TALK_TTS=kokoro: warm the model now so the first reply does not pay the ~2 s cold start.
+  if (ttsBackend(loadConfig()) === 'kokoro') ensureKokoro(loadConfig()).catch(e => log(`kokoro prewarm failed: ${e instanceof Error ? e.message : e}`))
   log(`ready; inbox ${INBOX}`)
 }
 

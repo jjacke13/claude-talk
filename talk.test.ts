@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { activeHere, beepPcm, listenDone, listenStart, listenStep, parseConfig, resolveConfig, rms, sanitizeForSpeech, shouldSpeak, sortInbox, splitCmd, toolNarration, turnState, turnTexts } from './talk.ts'
+import { activeHere, kokoroArgs, kokoroRequest, speechSpeed, ttsBackend, beepPcm, listenDone, listenStart, listenStep, parseConfig, resolveConfig, rms, sanitizeForSpeech, shouldSpeak, sortInbox, splitCmd, toolNarration, turnState, turnTexts } from './talk.ts'
 
 test('parseConfig: comments, quotes, export, last wins', () => {
   expect(parseConfig(['# c', '', 'TALK_LANG=el # greek', 'export TALK_SPEAK=on', 'TALK_VOICE="a # b"', 'TALK_LANG=fr', 'x=1'].join('\n')))
@@ -138,4 +138,30 @@ describe('activeHere (TALK_HOME)', () => {
     expect(activeHere(cfg, '/home/v/bip-110')).toBe(false)
     expect(activeHere(cfg, undefined)).toBe(false)
   })
+})
+
+test('kokoro: defaults keep piper, unknown TALK_TTS → piper', () => {
+  const c = resolveConfig('', {}, '/h')
+  expect(ttsBackend(c)).toBe('piper')
+  expect(ttsBackend(resolveConfig('TALK_TTS=kokoro', {}, '/h'))).toBe('kokoro')
+  expect(ttsBackend(resolveConfig('TALK_TTS=Kokoro2', {}, '/h'))).toBe('piper')
+  expect([c.TALK_KOKORO_SID, c.TALK_KOKORO_THREADS, c.TALK_KOKORO_LEXICON]).toEqual(['3', '4', 'lexicon-us-en.txt'])
+  expect(c.TALK_KOKORO_MODEL).toBe('/h/.claude/channels/talk/models/kokoro-multi-lang-v1_0/model.onnx')
+})
+
+test('kokoroArgs: assets from the dir, bare lexicon joined, path lexicon kept', () => {
+  const c = resolveConfig('TALK_KOKORO_DIR=~/k\nTALK_KOKORO_MODEL=/m.onnx\nTALK_KOKORO_THREADS=x\nTALK_KOKORO_IDLE_S=0', {}, '/h')
+  const a = kokoroArgs(c, '/s.sock')
+  const arg = (k: string) => a[a.indexOf(k) + 1]
+  expect([arg('--sock'), arg('--model'), arg('--voices'), arg('--tokens'), arg('--data-dir'), arg('--dict-dir'), arg('--lexicon'), arg('--threads'), arg('--idle')])
+    .toEqual(['/s.sock', '/m.onnx', '/h/k/voices.bin', '/h/k/tokens.txt', '/h/k/espeak-ng-data', '/h/k/dict', '/h/k/lexicon-us-en.txt', '4', '0'])
+  expect(kokoroArgs({ ...c, TALK_KOKORO_LEXICON: '/x/lex.txt' }, '/s')).toContain('/x/lex.txt')
+})
+
+test('kokoroRequest: sid + TALK_SPEED clamped like piper', () => {
+  const c = resolveConfig('TALK_SPEED=1.3', {}, '/h')
+  expect(JSON.parse(kokoroRequest(c, 'hi'))).toEqual({ text: 'hi', sid: 3, speed: 1.3 })
+  expect(kokoroRequest(c, 'hi').endsWith('\n')).toBe(true)
+  expect(speechSpeed({ TALK_SPEED: '9' })).toBe(3)
+  expect(speechSpeed({ TALK_SPEED: 'fast' })).toBe(1)
 })

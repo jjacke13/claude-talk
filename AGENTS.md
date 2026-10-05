@@ -74,6 +74,7 @@ moves the directory). Write it directly or, inside a session, use `/talk:configu
 | `voice <path>` | `TALK_VOICE` | `~/.hermes/models/piper/en_GB-alan-medium.onnx` | `.onnx.json` beside it |
 | `speak mirror\|on\|off` | `TALK_SPEAK` | `mirror` | mirror = speak only replies to spoken turns |
 | `speed <0.5-3>` | `TALK_SPEED` | `1.0` | 1.3 faster, 0.8 slower |
+| `tts piper\|kokoro` | `TALK_TTS` | `piper` | `kokoro` = warm Kokoro v1.0 server, `TALK_KOKORO_*` keys; falls back to piper per utterance (README "Kokoro voice") |
 | `key <KEY_NAME>` | `TALK_KEY` | `KEY_RIGHTALT` | `KEY_RIGHTCTRL`, `KEY_PAUSE`, `KEY_F12`, or evdev code |
 | `narrate on|off` | `TALK_NARRATE` | `off` | `on` = speak a one-line description of each tool call as it starts |
 | `reply voice\|both` | `TALK_REPLY` | `both` | `voice` = spoken conversation only: Claude answers via the speak tool, terminal gets a marker line |

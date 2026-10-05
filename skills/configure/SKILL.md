@@ -42,6 +42,9 @@ Keys and defaults:
 | `TALK_RECORDER` | `pw-record --raw --rate 16000 --channels 1 --format s16 {raw}` (Linux) / SoX `rec …` elsewhere | argv template; must write raw s16le 16 kHz mono to `{raw}` |
 | `TALK_KEY` | `KEY_RIGHTALT` | hold-to-talk key (name or evdev code) |
 | `TALK_SPEED` | `1.0` | speech rate: 1.3 = faster, 0.8 = slower (0.5–3) |
+| `TALK_TTS` | `piper` | `kokoro` = warm Kokoro v1.0 server (README "Kokoro voice"); any failure falls back to piper per utterance |
+| `TALK_KOKORO_MODEL` · `TALK_KOKORO_DIR` | `<state-dir>/models/kokoro-multi-lang-v1_0/model.onnx` · `<state-dir>/models/kokoro-int8-multi-lang-v1_0` | fp32 model · voices.bin, tokens.txt, espeak-ng-data, dict, lexicons |
+| `TALK_KOKORO_SID` · `_LEXICON` · `_THREADS` · `_IDLE_S` | `3` · `lexicon-us-en.txt` · `4` · `3600` | speaker (3 = af_heart) · lexicon (bare name = in the dir) · threads · idle seconds before the server exits (edit the file directly) |
 | `TALK_NARRATE` | `off` | `on` = also speak a one-line description of each tool call as it starts |
 | `TALK_REPLY` | `both` | `voice` = purely spoken conversation: Claude answers with the speak tool only and writes just a marker line in the terminal |
 | `TALK_MAX_SPEAK_CHARS` | `1200` | cut longer replies at a sentence boundary |
@@ -73,19 +76,21 @@ Keys and defaults:
    exists: `test -x <state-dir>/wake/venv/bin/python` (absent → "wake word runtime not set up: see README 'Wake word'").
    If `TALK_WAKE_MODEL` is a bare name, `test -f <plugin-root>/models/<name>.onnx`.
    Companion UI: show `TALK_UI`; when `on`, print the URL `http://127.0.0.1:<TALK_UI_PORT>`.
+   TTS: show `TALK_TTS`; when `kokoro`, `test -f` `TALK_KOKORO_MODEL` and `<TALK_KOKORO_DIR>/voices.bin`, and say whether the
+   warm server is up (`test -S <state-dir>/kokoro.sock`).
    Transcription: show `TALK_STT_URL` (empty → "local whisper-cli"), `TALK_STT_LANG`, and `TALK_STT_TOKEN` as
    **"set"/"unset" only — never echo the token**, not even part of it.
 5. Remind: push-to-talk is `bun <plugin-root>/bin/talk` (or `talk` if on PATH); replies are spoken per `TALK_SPEAK`;
    with `TALK_WAKE=on`, saying the wake word does the same as the key.
 
-### `lang <code>` · `model <path>` · `voice <path>` · `speak mirror|on|off` · `reply voice|both` · `player <cmd>` · `max <chars>` · `wake on|off` · `wakeword <name>` · `wakemodel <path>` · `followup <s>` · `ui on|off` · `ui fps <idle> [active]` · `bargein on|off` · `stt <url|off>` · `stt lang <code|auto>` · `stt token <token>` · `home <dir>[,<dir>]|off`
+### `lang <code>` · `model <path>` · `voice <path>` · `speak mirror|on|off` · `reply voice|both` · `player <cmd>` · `max <chars>` · `wake on|off` · `wakeword <name>` · `wakemodel <path>` · `followup <s>` · `ui on|off` · `ui fps <idle> [active]` · `bargein on|off` · `stt <url|off>` · `stt lang <code|auto>` · `stt token <token>` · `home <dir>[,<dir>]|off` · `tts piper|kokoro`
 
 Set the matching key (`TALK_LANG`, `TALK_MODEL`, `TALK_VOICE`, `TALK_SPEAK`, `TALK_PLAYER`, `TALK_RECORDER`, `TALK_KEY`, `TALK_SPEED`, `TALK_NARRATE`, `TALK_REPLY`,
 `TALK_MAX_SPEAK_CHARS`, `TALK_WAKE`, `TALK_WAKE_WORD`, `TALK_WAKE_MODEL`, `TALK_WAKE_FOLLOWUP_S`, `TALK_UI`). `ui fps <idle> [active]` sets
 `home <dir>[,<dir>]` sets `TALK_HOME` (comma-separated project dirs; only sessions started there own the mic, wake word, page and `speak` — other sessions idle); `home off` clears it. `TALK_UI_FPS` and, when given, `TALK_UI_FPS_ACTIVE` (integers 1–120; refuse anything else). `stt <url>` sets `TALK_STT_URL`
 (must start with `http://` or `https://`; `stt off` writes an empty value), `stt lang` sets `TALK_STT_LANG`, `stt token` sets
 `TALK_STT_TOKEN` — after writing a token run `chmod 600 <state-dir>/config` and confirm with "token set", never with the value.
-STT changes apply to the next utterance (no relaunch). Keep other lines. Create the directory with `mkdir -p` if needed.
+`tts piper|kokoro` sets `TALK_TTS` (refuse other values); applies to the next utterance. STT changes apply to the next utterance (no relaunch). Keep other lines. Create the directory with `mkdir -p` if needed.
 For `model`/`voice`, `test -f` the path first and refuse with a clear message if absent
 (a non-English model needs a multilingual ggml, e.g. `ggml-base.bin`, not `*.en.bin`).
 For `wake on`, `test -x <state-dir>/wake/venv/bin/python` first; if absent, still write the key but print the

@@ -80,6 +80,15 @@ PreToolUse narration opt-in `TALK_NARRATE`; `TALK_REPLY=voice` → channel meta 
   "speaking" = say.pid alive (200 ms poll); listening times out 30 s, thinking 120 s (text-only answers). Context % = newest
   `context-*` file in the state dir (10 s poll). Tested with a throwaway emitter + Chrome at 1920 and 960 wide, NOT the live server.
   Gotcha: `pkill -f <script>` kills the calling shell too (pattern matches it) — anchor it: `pkill -f 'name\.ts
+- **0.5.0 Kokoro TTS** (2026-10-05, worker on laptop's instruction): `TALK_TTS=piper|kokoro` (default piper). Warm server
+  `bin/kokoro-server.py` (sherpa-onnx python, flake devShell `kokoro` from a 2nd input nixpkgs-unstable locked to 331800de —
+  25.11 has no sherpa-onnx) on `<state>/kokoro.sock`, flock `kokoro.sock.lock` = one server; JSON line in, s16le 24 kHz out per
+  sentence (`max_num_sentences=1` + generate callback; callback returns 0 when the client hung up). voice.ts `ensureKokoro`
+  (connect probe → `setsid -f bin/kokoro-server` → poll 8 s) / `sayKokoro` (player spawned at first chunk, at KOKORO_RATE) /
+  `say()` async → `Speech {kill, exited}`; any pre-audio failure → one log line → piper. server.ts prewarms. Measured: cold 3.6 s,
+  warm first audio 0.8 s on a 3-sentence reply. **Gotchas:** host `LD_LIBRARY_PATH` (alsa-lib, newer glibc) breaks the sherpa
+  import → wrapper unsets it; AF_UNIX path ≤108 bytes (scratchpad paths are too long — tests use os.tmpdir()); two
+  `devShells.${system}.x` attrs = "dynamic attribute already defined" → one attrset. Output length varies ±0.01 s run to run (model).
 - Not done: Vaios's real voice against hey_claudia.onnx (only synthetic voices so far — if it misses, lower TALK_WAKE_THRESHOLD or
   add voices to wake/voices and retrain), Greek voice download, VAD, streaming (needs Agent SDK/hades), SimpleX wiring, Windows wake.
 

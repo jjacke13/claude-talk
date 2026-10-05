@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Runs bin/kokoro-server.py inside the flake's `kokoro` dev shell (sherpa-onnx python from nixpkgs).
+# voice.ts spawns this detached; arguments pass straight through. Linux-only for now.
+set -euo pipefail
+root=$(cd "$(dirname "$0")/.." && pwd)
+# The host's LD_LIBRARY_PATH (alsa-lib from a newer glibc) breaks the sherpa-onnx import.
+unset LD_LIBRARY_PATH
+exec nix develop "$root#kokoro" --builders '' -c python3 "$root/bin/kokoro-server.py" "$@"

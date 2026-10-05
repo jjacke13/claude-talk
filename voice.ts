@@ -4,7 +4,7 @@
 import { appendFileSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
-import { resolveConfig, splitCmd, type Config } from './talk.ts'
+import { KOKORO_RATE, kokoroArgs, kokoroRequest, resolveConfig, speechSpeed, splitCmd, ttsBackend, type Config } from './talk.ts'
 
 export const STATE_DIR = process.env.TALK_STATE_DIR
   ?? join(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude'), 'channels', 'talk')
@@ -41,17 +41,79 @@ export function voiceRate(voice: string): number {
 // piper reads text on stdin, writes raw s16le mono on stdout.
 export function synth(cfg: Config, text: string) {
   requireFile(cfg.TALK_VOICE, 'TALK_VOICE')
-  // TALK_SPEED 1.0 = the voice's natural rate; piper's length-scale is its inverse (0.5–3 clamp).
-  const speed = Math.min(3, Math.max(0.5, Number(cfg.TALK_SPEED) || 1))
-  return Bun.spawn(['piper', '--model', cfg.TALK_VOICE, '--output-raw', '--length-scale', String(1 / speed)], { stdin: new Blob([text + '\n']), stdout: 'pipe', stderr: 'ignore' })
+  return Bun.spawn(['piper', '--model', cfg.TALK_VOICE, '--output-raw', '--length-scale', String(1 / speechSpeed(cfg))], { stdin: new Blob([text + '\n']), stdout: 'pipe', stderr: 'ignore' })
 }
 
-// Speak now. Returns both children so a SIGTERM to the wrapper can cut the audio.
-export function say(cfg: Config, text: string) {
+// Audio that is playing: kill() cuts it (SIGTERM to bin/say), exited = the player's exit code.
+export type Speech = { kill(): void; exited: Promise<number> }
+
+// Speak now with TALK_TTS. Kokoro failing in any way before its first audio → piper, one log line.
+export async function say(cfg: Config, text: string, sock = KOKORO_SOCK): Promise<Speech> {
+  if (ttsBackend(cfg) === 'kokoro') {
+    try { return await sayKokoro(cfg, text, sock) }
+    catch (e) { log(`kokoro failed (${e instanceof Error ? e.message : e}) — piper for this one`) }
+  }
+  return sayPiper(cfg, text)
+}
+
+export function sayPiper(cfg: Config, text: string): Speech {
   const piper = synth(cfg, text)
   const rate = String(voiceRate(cfg.TALK_VOICE))
   const player = Bun.spawn(splitCmd(cfg.TALK_PLAYER, { rate }), { stdin: piper.stdout, stdout: 'ignore', stderr: 'ignore' })
-  return { piper, player }
+  return { kill: () => { piper.kill(); player.kill() }, exited: player.exited }
+}
+
+// --- kokoro: one warm server (bin/kokoro-server.py) per state dir, shared by every say ------
+export const KOKORO_SOCK = join(STATE_DIR, 'kokoro.sock')
+const KOKORO_START_MS = 8000         // ponytail: fixed; cold start measured 2.2 s (nix develop + model load)
+const KOKORO_FIRST_AUDIO_MS = 10000  // a wedged server costs one 10 s pause, then piper
+
+const canConnect = (sock: string) => Bun.connect({ unix: sock, socket: { data() {} } }).then(s => (s.end(), true), () => false)
+
+// Server up? Else start it detached (setsid: it outlives this say and serves the next ones) and
+// wait for its socket. Also the prewarm server.ts runs at session start.
+export async function ensureKokoro(cfg: Config, sock = KOKORO_SOCK): Promise<void> {
+  if (await canConnect(sock)) return
+  requireFile(cfg.TALK_KOKORO_MODEL, 'TALK_KOKORO_MODEL')
+  requireFile(join(cfg.TALK_KOKORO_DIR, 'voices.bin'), 'TALK_KOKORO_DIR')
+  const bin = new URL('./bin/kokoro-server', import.meta.url).pathname
+  Bun.spawn(['setsid', '-f', bin, ...kokoroArgs(cfg, sock)], { stdin: 'ignore', stdout: 'ignore', stderr: openSync(LOG_FILE, 'a') })
+  log(`kokoro: starting server on ${sock}`)
+  for (const until = Date.now() + KOKORO_START_MS; Date.now() < until;) {
+    await Bun.sleep(100)
+    if (await canConnect(sock)) return
+  }
+  throw new Error(`server not up after ${KOKORO_START_MS} ms`)
+}
+
+// Stream the reply into the player sentence by sentence. Resolves at the first audio (the player
+// starts only then, at 24 kHz); rejects if the server is down or closes without sending anything.
+export async function sayKokoro(cfg: Config, text: string, sock = KOKORO_SOCK): Promise<Speech> {
+  await ensureKokoro(cfg, sock)
+  return new Promise((resolve, reject) => {
+    let player: import('bun').Subprocess<'pipe', 'ignore', 'ignore'> | undefined
+    let conn: import('bun').Socket | undefined
+    const timer = setTimeout(() => { conn?.end(); fail(new Error(`no audio after ${KOKORO_FIRST_AUDIO_MS} ms`)) }, KOKORO_FIRST_AUDIO_MS)
+    const fail = (e: Error) => { clearTimeout(timer); reject(e) }   // no-op once resolved
+    Bun.connect({
+      unix: sock,
+      socket: {
+        open(s) { conn = s; s.write(kokoroRequest(cfg, text)) },
+        data(s, chunk) {
+          if (!player) {
+            clearTimeout(timer)
+            player = Bun.spawn(splitCmd(cfg.TALK_PLAYER, { rate: String(KOKORO_RATE) }), { stdin: 'pipe', stdout: 'ignore', stderr: 'ignore' })
+            const p = player
+            resolve({ kill: () => { s.end(); p.kill() }, exited: p.exited })
+          }
+          player.stdin.write(chunk)
+          player.stdin.flush()
+        },
+        close() { if (player) player.stdin.end(); else fail(new Error('server sent no audio')) },
+        error(_s, e) { if (!player) fail(e) },
+      },
+    }).catch(fail)
+  })
 }
 
 // Render to ogg/opus (what SimpleX/Telegram voice bubbles want). Returns duration in seconds.
