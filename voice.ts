@@ -121,9 +121,11 @@ export async function renderOgg(cfg: Config, text: string, out: string): Promise
   // Same TALK_TTS choice + piper fallback as say(): the "player" is an opus encoder writing `out`.
   // ponytail: the player template is split on whitespace, so `out` must not contain any.
   if (/\s/.test(out)) throw new Error(`tts output path must not contain whitespace: ${out}`)
-  const enc = `ffmpeg -y -loglevel error -f s16le -ar {rate} -ac 1 -i - -c:a libopus ${out}`
+  // env -u: the nixpkgs claude-code wrapper exports its own alsa-lib in LD_LIBRARY_PATH, which an ffmpeg
+  // from another nixpkgs cannot load ("GLIBC_2.xx not found"). Bun.spawn ignores process.env edits.
+  const enc = `env -u LD_LIBRARY_PATH ffmpeg -y -loglevel error -f s16le -ar {rate} -ac 1 -i - -c:a libopus ${out}`
   if (await (await say({ ...cfg, TALK_PLAYER: enc }, text)).exited !== 0) throw new Error('ffmpeg failed')
-  const probe = Bun.spawn(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', out], { stdout: 'pipe' })
+  const probe = Bun.spawn(['env', '-u', 'LD_LIBRARY_PATH', 'ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', out], { stdout: 'pipe' })
   return Math.round(Number((await new Response(probe.stdout).text()).trim())) || 0
 }
 
