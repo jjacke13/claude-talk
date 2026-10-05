@@ -1,15 +1,16 @@
 #!/usr/bin/env bun
 // say [--after PID] "text"  |  echo text | say     → speaks with TALK_TTS (piper, or warm kokoro).
 // --after PID: wait until that process (an earlier `say`) has exited, so blocks play in order.
-import { loadConfig, log, say, type Speech } from '../voice.ts'
+// say --wav file.wav → plays the file instead (wake-word sounds), same say.pid and interrupt rules.
+import { loadConfig, log, playWav, say, type Speech } from '../voice.ts'
 const argv = process.argv.slice(2)
-const i = argv.indexOf('--after')
-const after = i >= 0 ? Number(argv[i + 1]) : 0
-if (i >= 0) argv.splice(i, 2)
-const text = (argv.join(' ') || await new Response(Bun.stdin.stream()).text()).trim()
-if (!text) process.exit(0)
+const flag = (name: string) => { const i = argv.indexOf(name); return i >= 0 ? argv.splice(i, 2)[1] ?? '' : '' }
+const after = Number(flag('--after')) || 0
+const wav = flag('--wav')
+const text = wav ? '' : (argv.join(' ') || await new Response(Bun.stdin.stream()).text()).trim()
+if (!text && !wav) process.exit(0)
 let speech: Speech | undefined
 for (const s of ['SIGTERM', 'SIGINT'] as const) process.on(s, () => { speech?.kill(); process.exit(0) })
 while (after) { try { process.kill(after, 0); await Bun.sleep(100) } catch { break } }
-try { speech = await say(loadConfig(), text) } catch (e) { log(String((e as Error).message)); process.exit(1) }
+try { speech = wav ? playWav(loadConfig(), wav) : await say(loadConfig(), text) } catch (e) { log(String((e as Error).message)); process.exit(1) }
 process.exit(await speech.exited)

@@ -142,6 +142,7 @@ Hands-free alternative to the key. **Windows/macOS: unsupported for now** — sa
 | `TALK_WAKE_WORD` | `hey claudia` | what the user says (label only; the model decides) |
 | `TALK_WAKE_MODEL` | `hey_claudia` | repo `models/hey_claudia.onnx`; `hey_jarvis` = prebuilt fallback (then say "hey jarvis"); or a path |
 | `TALK_WAKE_FOLLOWUP_S` | `6` | follow-up window |
+| `TALK_WAKE_EXTRA` | (empty) | more words, same detector: `hey_michael=sound:~/.claude/channels/talk/sounds/heehee.wav` plays the sound (no turn); `TALK_WAKE_THRESHOLD_HEY_MICHAEL` per word (README "More wake words") |
 | `TALK_WAKE_THRESHOLD` / `TALK_WAKE_SILENCE_MS` / `TALK_WAKE_RMS` | `0.5` / `1200` / `0.01` | detector score; quiet that ends an utterance; mic RMS that counts as speech (calibrate from the `rms‰` trace in `talk.log`) |
 
 Gotchas: **Claudia must never say the wake word aloud** — the mic hears the speaker and the

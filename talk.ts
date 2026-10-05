@@ -59,6 +59,9 @@ export function defaultsFor(platform: string) {
     TALK_UI_FPS: '30',              // page frame rate while idle/thinking (whisper shares the CPU with the browser)
     TALK_UI_FPS_ACTIVE: '60',       // … while listening/speaking
     TALK_WAKE_BARGEIN: 'off',       // on = the wake word also interrupts Claudia mid-sentence (her own voice can trigger it)
+    // More wake words on the same detector, each with its own action: "name=kind:arg,…" (parseWakeExtra).
+    // Per-word threshold: TALK_WAKE_THRESHOLD_<NAME> (thresholdFor), default TALK_WAKE_THRESHOLD.
+    TALK_WAKE_EXTRA: '',
     ...(AUDIO_DEFAULTS[platform] ?? AUDIO_DEFAULTS.other!),
   }
 }
@@ -160,6 +163,61 @@ export function sanitizeForSpeech(md: string, maxChars = 1200): string {
 }
 
 // --- wake word: end-of-utterance by RMS, and the "listening" beep ---------------------------
+
+// TALK_WAKE_EXTRA = "hey_michael=sound:~/x.wav,…": extra models on the one detector, each with an
+// action. Only `sound` exists today; a new kind (e.g. `session:<url>`) = add it to WAKE_ACTIONS and
+// handle it in wake.ts runExtra. Bad entries are reported, not fatal.
+export const WAKE_ACTIONS = ['sound'] as const
+export type WakeAction = { kind: (typeof WAKE_ACTIONS)[number]; arg: string }
+export type WakeExtra = { name: string; action: WakeAction }
+export function parseWakeExtra(v: string, home: string): { extras: WakeExtra[]; errors: string[] } {
+  const extras: WakeExtra[] = [], errors: string[] = []
+  for (const entry of v.split(',').map(e => e.trim()).filter(Boolean)) {
+    const m = entry.match(/^([\w.\/~-]+)=(\w+):(.+)$/)
+    const kind = m?.[2] as WakeAction['kind'] | undefined
+    if (!m || !WAKE_ACTIONS.includes(kind!)) { errors.push(`${entry}: want name=${WAKE_ACTIONS.join('|')}:<arg>`); continue }
+    if (extras.some(e => e.name === m[1])) { errors.push(`${entry}: ${m[1]} given twice`); continue }
+    extras.push({ name: m[1]!, action: { kind: kind!, arg: m[3]!.trim().replace(/^~(?=\/|$)/, home) } })
+  }
+  return { extras, errors }
+}
+
+// openwakeword reports a model under its .onnx basename; prebuilt names gain a version (hey_jarvis_v0.1).
+export const wakeKey = (model: string) => model.split('/').pop()!.replace(/\.onnx$/, '')
+// Which extra a detection belongs to; undefined = the main wake word (the capture flow).
+export function wakeAction(detected: string, extras: WakeExtra[]): WakeExtra | undefined {
+  return extras.find(e => { const k = wakeKey(e.name); return detected === k || detected.startsWith(k + '_v') })
+}
+// A detector stdout line "<model> <score>"; anything else (ready, warnings) → null.
+export function parseDetection(line: string): { model: string; score: number } | null {
+  const m = line.trim().match(/^(\S+) (\d+(?:\.\d+)?)$/)
+  return m ? { model: m[1]!, score: Number(m[2]) } : null
+}
+// TALK_WAKE_THRESHOLD_HEY_MICHAEL for "hey_michael" (from the raw config, env wins), else the default.
+export function thresholdFor(name: string, raw: Record<string, string | undefined>, fallback: string): string {
+  const v = raw[`TALK_WAKE_THRESHOLD_${wakeKey(name).toUpperCase().replace(/[^A-Z0-9]/g, '_')}`]
+  return v && Number(v) > 0 && Number(v) <= 1 ? v : fallback
+}
+
+// A PCM16 WAV → its rate and the samples as mono s16le (first channel), for TALK_PLAYER's raw stdin.
+export function parseWav(buf: Buffer): { rate: number; pcm: Buffer } {
+  if (buf.toString('ascii', 0, 4) !== 'RIFF' || buf.toString('ascii', 8, 12) !== 'WAVE') throw new Error('not a WAV file')
+  let fmt: { ch: number; rate: number; bits: number; tag: number } | undefined
+  for (let o = 12; o + 8 <= buf.length;) {
+    const id = buf.toString('ascii', o, o + 4), size = buf.readUInt32LE(o + 4), body = o + 8
+    if (id === 'fmt ') fmt = { tag: buf.readUInt16LE(body), ch: buf.readUInt16LE(body + 2), rate: buf.readUInt32LE(body + 4), bits: buf.readUInt16LE(body + 14) }
+    if (id === 'data') {
+      if (!fmt || fmt.tag !== 1 || fmt.bits !== 16) throw new Error('need 16-bit PCM (ffmpeg -i in -ac 1 -c:a pcm_s16le out.wav)')
+      const data = buf.subarray(body, Math.min(buf.length, body + size))
+      if (fmt.ch === 1) return { rate: fmt.rate, pcm: data }
+      const n = Math.floor(data.length / (2 * fmt.ch)), pcm = Buffer.alloc(n * 2)
+      for (let i = 0; i < n; i++) pcm.writeInt16LE(data.readInt16LE(i * 2 * fmt.ch), i * 2)
+      return { rate: fmt.rate, pcm }
+    }
+    o = body + size + (size & 1)
+  }
+  throw new Error('WAV has no data chunk')
+}
 
 // RMS of raw s16le mono, normalized to 0–1.
 export function rms(pcm: Buffer): number {

@@ -4,7 +4,7 @@
 import { appendFileSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
-import { KOKORO_RATE, kokoroArgs, kokoroRequest, resolveConfig, speechSpeed, splitCmd, ttsBackend, type Config } from './talk.ts'
+import { KOKORO_RATE, kokoroArgs, kokoroRequest, parseConfig, parseWav, resolveConfig, speechSpeed, splitCmd, ttsBackend, type Config } from './talk.ts'
 
 export const STATE_DIR = process.env.TALK_STATE_DIR
   ?? join(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude'), 'channels', 'talk')
@@ -27,6 +27,11 @@ export const log = (line: string) => {
 export function loadConfig(): Config {
   const text = existsSync(CONFIG_FILE) ? readFileSync(CONFIG_FILE, 'utf8') : ''
   return resolveConfig(text, process.env, homedir(), process.platform)
+}
+
+// Every KEY=value from the file with env on top, unknown keys included (TALK_WAKE_THRESHOLD_<NAME>).
+export function loadRawConfig(): Record<string, string | undefined> {
+  return { ...parseConfig(existsSync(CONFIG_FILE) ? readFileSync(CONFIG_FILE, 'utf8') : ''), ...process.env }
 }
 
 export function requireFile(path: string, key: string): void {
@@ -54,6 +59,14 @@ export async function say(cfg: Config, text: string, sock = KOKORO_SOCK): Promis
     catch (e) { log(`kokoro failed (${e instanceof Error ? e.message : e}) — piper for this one`) }
   }
   return sayPiper(cfg, text)
+}
+
+// A WAV file through the same player (bin/say --wav): say.pid, interrupts and the wake guards apply.
+export function playWav(cfg: Config, wav: string): Speech {
+  requireFile(wav, 'sound')
+  const { rate, pcm } = parseWav(readFileSync(wav))
+  const player = Bun.spawn(splitCmd(cfg.TALK_PLAYER, { rate: String(rate) }), { stdin: new Blob([pcm]), stdout: 'ignore', stderr: 'ignore' })
+  return { kill: () => player.kill(), exited: player.exited }
 }
 
 export function sayPiper(cfg: Config, text: string): Speech {
@@ -217,14 +230,16 @@ export function alive(pidFile: string): boolean {
 
 // Queue speech behind whatever `say` is still playing (or cut it off when interrupt=true).
 // Detached: the caller (a hook or the MCP server) never waits for the audio.
-export function enqueueSpeech(text: string, interrupt = false): number {
+export const enqueueSpeech = (text: string, interrupt = false) => enqueueSay([text], interrupt)
+export const enqueueSound = (wav: string) => enqueueSay(['--wav', wav])
+function enqueueSay(argv: string[], interrupt = false): number {
   let after = ''
   try {
     const pid = Number(readFileSync(SAY_PID, 'utf8'))
     if (interrupt) process.kill(pid, 'SIGTERM'); else after = String(pid)
   } catch {}
   const logFd = openSync(LOG_FILE, 'a')
-  const args = ['bun', new URL('./bin/say', import.meta.url).pathname, ...(after ? ['--after', after] : []), text]
+  const args = ['bun', new URL('./bin/say', import.meta.url).pathname, ...(after ? ['--after', after] : []), ...argv]
   const p = Bun.spawn(args, { stdin: 'ignore', stdout: 'ignore', stderr: logFd })
   p.unref()
   writeFileSync(SAY_PID, String(p.pid))

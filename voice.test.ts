@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { resolveConfig } from './talk.ts'
-import { say, transcribe, wrapWav } from './voice.ts'
+import { playWav, say, transcribe, wrapWav } from './voice.ts'
 
 function silentWav(): string {
   const dir = mkdtempSync(join(tmpdir(), 'talk-stt-'))
@@ -99,4 +99,14 @@ test('TALK_TTS=piper never touches the kokoro socket', async () => {
     await expect(say({ ...kokoroCfg(dir), TALK_TTS: 'piper' }, 'hi', sock)).rejects.toThrow('TALK_VOICE not found')
     expect(connects).toBe(0)
   } finally { srv.stop(true) }
+})
+
+test('playWav: the file goes to TALK_PLAYER at its own rate', async () => {
+  const dir = sockDir()
+  writeFileSync(join(dir, 'x.raw'), Buffer.alloc(3200, 5))
+  wrapWav(join(dir, 'x.raw'), join(dir, 'x.wav'))
+  const sp = playWav({ ...resolveConfig('', {}, '/h'), TALK_PLAYER: `tee ${dir}/{rate}.raw` }, join(dir, 'x.wav'))
+  expect(await sp.exited).toBe(0)
+  expect(readFileSync(join(dir, '16000.raw'))).toEqual(Buffer.alloc(3200, 5))
+  expect(() => playWav(resolveConfig('', {}, '/h'), join(dir, 'missing.wav'))).toThrow('sound not found')
 })

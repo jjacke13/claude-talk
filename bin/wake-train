@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
-"""Train models/hey_claudia.onnx — the openwakeword classifier for the wake word "hey claudia".
+"""Train an openwakeword classifier for a wake phrase: models/hey_claudia.onnx by default.
+
+  bin/wake-train                                  # "hey claudia" → models/hey_claudia.onnx
+  bin/wake-train --phrase "hey michael"           # → models/hey_michael.onnx (its own near-misses,
+                                                  #   plus "hey Claudia" renders as negatives)
+  bin/wake-train --phrase "hey robot"             # any other phrase: generic spellings + near-misses
 
 Pipeline, CPU only, minutes:
   1. piper renders the wake word (a few spellings, three speeds) and negatives (near-misses,
      other names, plain sentences) with every voice under $TALK_STATE_DIR/models,
      ~/.hermes/models/piper and $TALK_STATE_DIR/wake/voices — multi-speaker voices give
      --speakers-per-voice speakers each. Rendered clips are cached per voice in the workdir.
+     When the warm Kokoro server is up ($TALK_STATE_DIR/kokoro.sock, TALK_TTS=kokoro), the plain
+     sentences are also rendered in Claudia's Kokoro voice (--kokoro-sid) as negatives.
   2. numpy/scipy augmentation: speed/pitch, gain, white/pink noise, the room's own noise
      (recorded from the mic for --room-seconds), synthetic reverb.
   3. openwakeword's own AudioFeatures turns 2 s clips into (16, 96) embeddings.
@@ -35,11 +42,42 @@ STATE = Path(os.environ.get("TALK_STATE_DIR") or Path(os.environ.get("CLAUDE_CON
 VOICE_DIRS = [STATE / "models", Path.home() / ".hermes" / "models" / "piper", STATE / "wake" / "voices"]
 ROOT = Path(__file__).resolve().parent.parent
 
-POSITIVE = ["hey Claudia", "hey, Claudia", "Hey Claudia!", "hey Claudia?", "hey Cloudia", "hey, Cloudia"]
-NEAR_MISS = ["hey Jarvis", "hey Claude", "Claudia", "hey Maria", "hey cloud", "hey Nadia", "hey Lydia", "hey Julia",
-             "hey Google", "hey Siri", "okay Claude", "play audio", "hey there", "hey you", "Claude", "cloudy day",
-             "hey Sofia", "hey Andrea", "hey Clara", "a clear idea", "hey, come here", "Cordelia", "hey Daddy"]
-HARD = {"Claudia": 3, "hey Claude": 3, "hey cloud": 3, "Claude": 2, "hey Nadia": 2, "hey Maria": 2}   # extra augmented copies
+# Per phrase: positive spellings, near-miss negatives, HARD = extra augmented copies of the worst
+# near-misses, CROSS = another wake word of ours, one render per speaker, so the two never cross-fire.
+PROFILES = {
+    "hey claudia": dict(
+        positive=["hey Claudia", "hey, Claudia", "Hey Claudia!", "hey Claudia?", "hey Cloudia", "hey, Cloudia"],
+        near_miss=["hey Jarvis", "hey Claude", "Claudia", "hey Maria", "hey cloud", "hey Nadia", "hey Lydia", "hey Julia",
+                   "hey Google", "hey Siri", "okay Claude", "play audio", "hey there", "hey you", "Claude", "cloudy day",
+                   "hey Sofia", "hey Andrea", "hey Clara", "a clear idea", "hey, come here", "Cordelia", "hey Daddy"],
+        hard={"Claudia": 3, "hey Claude": 3, "hey cloud": 3, "Claude": 2, "hey Nadia": 2, "hey Maria": 2},
+        cross=[]),
+    "hey michael": dict(
+        positive=["hey Michael", "hey, Michael", "Hey Michael!", "hey Michael?", "hey Maikel", "hey, Mykel"],
+        near_miss=["Michael", "hey Mike", "hey Micah", "hey Michelle", "hey Mitchell", "hey Miguel", "hey Michaela",
+                   "hey Rachel", "hey Nigel", "hey Daniel", "hey Manuel", "hey Nicole", "my cycle", "mechanical",
+                   "hey Jarvis", "hey Google", "hey Siri", "hey there", "hey you", "hey, come here", "hey Mama", "a nickel",
+                   # the name inside speech: v1 without these fired on "the meeting with Michael is at noon" (12/12 voices)
+                   "ask Michael", "thanks, Michael", "Michael is here", "that was Michael", "call Michael now", "with Michael",
+                   "and Michael said", "Michael, come here", "where is Michael", "I met Michael today", "tell Michael",
+                   "Michael's car", "okay Michael", "say Michael", "they Michael", "hi Michael", "a Michael", "Mike"],
+        hard={"Michael": 3, "hey Mike": 4, "hey Michelle": 2, "hey Mitchell": 2, "hey Micah": 2, "with Michael": 3,
+              "they Michael": 3, "say Michael": 3, "a Michael": 3, "okay Michael": 2, "hi Michael": 2},
+        cross=["hey Claudia", "hey, Claudia", "Hey Claudia!", "hey Cloudia"]),
+}
+
+
+def profile(phrase: str) -> dict:
+    """A known phrase's profile, or a generic one: four spellings of the phrase, its last word alone,
+    and the usual assistant names as near-misses."""
+    known = PROFILES.get(phrase.lower().strip())
+    if known:
+        return known
+    words = phrase.strip().split()
+    head, last = " ".join(words[:-1]), words[-1]
+    return dict(positive=[phrase, f"{head}, {last}" if head else phrase, f"{phrase}!", f"{phrase}?"],
+                near_miss=[last, "hey Jarvis", "hey Google", "hey Siri", "hey there", "hey you", "hey, come here", "okay"],
+                hard={last: 3}, cross=[])
 SENTENCES = [
     "what is the weather like today", "set a timer for ten minutes", "the meeting starts at noon", "can you read the log",
     "I think the build failed again", "open the front door please", "how many people live in Athens", "turn the lights off",
@@ -59,7 +97,9 @@ SENTENCES = [
 
 def parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--out", default=str(ROOT / "models" / "hey_claudia.onnx"))
+    ap.add_argument("--phrase", default="hey claudia", help="the wake phrase; see PROFILES for the tuned ones")
+    ap.add_argument("--out", default="", help="default: models/<phrase_with_underscores>.onnx")
+    ap.add_argument("--kokoro-sid", type=int, default=3, help="Kokoro speaker for the sentence negatives (3 = af_heart)")
     ap.add_argument("--workdir", default=str(STATE / "wake" / "train"), help="rendered-clip cache + room noise")
     ap.add_argument("--speakers-per-voice", type=int, default=40)
     ap.add_argument("--room-seconds", type=float, default=15, help="record this much room noise from the mic (0 = skip)")
@@ -93,7 +133,7 @@ def to_16k(chunks, rate: int) -> np.ndarray:
 
 def render_voice(args: tuple) -> tuple[str, dict]:
     """One task = one voice × a few speakers: returns {text: [clip, ...]} for every (speaker, speed); cached as .npz."""
-    voice, speakers, cache, seed = args
+    voice, speakers, cache, seed, prof = args
     cache = Path(cache)
     if cache.exists():
         z = np.load(cache, allow_pickle=True)
@@ -113,24 +153,24 @@ def render_voice(args: tuple) -> tuple[str, dict]:
     rng = random.Random(seed)
     out: dict[str, list] = {}
     for spk in speakers:
-        for text in POSITIVE:
+        for text in prof["positive"]:
             for ls in (0.8, 1.0, 1.2):
                 cfg = SynthesisConfig(speaker_id=spk, length_scale=ls, noise_scale=rng.choice((0.5, 0.667, 0.9)))
                 out.setdefault(text, []).append(to_16k(v.synthesize(text, cfg), rate))
-        for text in NEAR_MISS + SENTENCES:
+        for text in prof["near_miss"] + rng.sample(prof["cross"], min(1, len(prof["cross"]))) + SENTENCES:
             cfg = SynthesisConfig(speaker_id=spk, length_scale=rng.choice((0.8, 1.0, 1.2)))
             out.setdefault(text, []).append(to_16k(v.synthesize(text, cfg), rate))
     np.savez(cache, **{k: np.array(vs, dtype=object) for k, vs in out.items()})
     return voice, out
 
 
-def render_all(voices: list[Path], workdir: Path, per_voice: int, jobs: int, seed: int) -> dict[str, list]:
+def render_all(voices: list[Path], workdir: Path, per_voice: int, jobs: int, seed: int, prof: dict, prefix: str) -> dict[str, list]:
     rng = random.Random(seed)
     tasks = []
     for v in voices:   # chunks of 4 speakers keep the pool balanced (libritts alone would otherwise be the tail)
         spk = voice_speakers(v, per_voice, rng)
         for i in range(0, len(spk), 4):
-            tasks.append((str(v), spk[i:i + 4], str(workdir / f"{v.stem}-{i // 4:02d}.npz"), seed + len(tasks)))
+            tasks.append((str(v), spk[i:i + 4], str(workdir / f"{prefix}{v.stem}-{i // 4:02d}.npz"), seed + len(tasks), prof))
     clips: dict[str, list] = {}
     t0, done = time.time(), 0
     with ProcessPoolExecutor(max_workers=jobs) as pool:
@@ -141,6 +181,32 @@ def render_all(voices: list[Path], workdir: Path, per_voice: int, jobs: int, see
                 clips.setdefault(k, []).extend(vs)
     print()
     return clips
+
+
+def render_kokoro(workdir: Path, sid: int) -> dict[str, list]:
+    """SENTENCES in Claudia's own Kokoro voice (three speeds), via the warm server's socket protocol
+    (bin/kokoro-server.py: one JSON line in, s16le 24 kHz out). Cached; {} when the server is down."""
+    import socket
+    cached = workdir / f"kokoro-{sid}.npz"
+    if cached.exists():
+        z = np.load(cached, allow_pickle=True)
+        return {k: list(v) for k, v in z.items()}
+    sock = STATE / "kokoro.sock"
+    out: dict[str, list] = {}
+    try:
+        for text in SENTENCES:
+            for speed in (0.9, 1.0, 1.15):
+                with socket.socket(socket.AF_UNIX) as c:
+                    c.connect(str(sock))
+                    c.sendall((json.dumps({"text": text, "sid": sid, "speed": speed}) + "\n").encode())
+                    raw = b"".join(iter(lambda: c.recv(65536), b""))
+                x = resample_poly(np.frombuffer(raw, np.int16).astype(np.float32) / 32768, 2, 3)   # 24 → 16 kHz
+                out.setdefault(text, []).append((np.clip(x, -1, 1) * 32767).astype(np.int16))
+    except OSError as e:
+        print(f"  kokoro negatives skipped ({sock}: {e})", flush=True)
+        return {}
+    np.savez(cached, **{k: np.array(vs, dtype=object) for k, vs in out.items()})
+    return out
 
 
 def record_room(workdir: Path, seconds: float) -> np.ndarray:
@@ -220,7 +286,7 @@ def augment(x: np.ndarray, room: np.ndarray, rng: random.Random, nrng: np.random
     return np.clip(x, -1, 1).astype(np.float32)
 
 
-def examples(clips: dict[str, list], room: np.ndarray, seed: int):
+def examples(clips: dict[str, list], room: np.ndarray, seed: int, prof: dict):
     """Yields (2 s float32 clip, label, tag) — a generator, so the audio never sits in memory at once."""
     rng, nrng = random.Random(seed), np.random.default_rng(seed)
 
@@ -230,8 +296,9 @@ def examples(clips: dict[str, list], room: np.ndarray, seed: int):
         for _ in range(n):
             yield augment(x, room, rng, nrng), label, t
 
+    near = set(prof["near_miss"]) | set(prof["cross"])
     for text, cs in clips.items():
-        pos = text in POSITIVE
+        pos = text in prof["positive"]
         for c in cs:
             c = c.astype(np.float32) / 32768
             if pos:
@@ -239,8 +306,8 @@ def examples(clips: dict[str, list], room: np.ndarray, seed: int):
                 yield from variants(frame(c, rng.uniform(0.7, 1.3)), 0, "early " + text, 0)      # already gone by
                 cut = c[:int(len(c) * rng.uniform(0.35, 0.6))]                                  # "hey Clau-"
                 yield from variants(frame(cut, rng.uniform(0, 0.3)), 0, "prefix " + text, 0)
-            elif text in NEAR_MISS:
-                yield from variants(frame(c, rng.uniform(0, 0.4)), 0, text, HARD.get(text, 1))
+            elif text in near:
+                yield from variants(frame(c, rng.uniform(0, 0.4)), 0, text, prof["hard"].get(text, 1))
                 yield from variants(frame(c, rng.uniform(0.4, 1.2)), 0, text, 0)
             else:   # a sentence: one random 2 s window, one augmented copy
                 s = rng.randrange(0, len(c) - CLIP) if len(c) > CLIP else 0
@@ -287,7 +354,7 @@ def fit(feat: np.ndarray, y: np.ndarray, seed: int):
     return clf
 
 
-def export_onnx(clf, out: Path) -> None:
+def export_onnx(clf, out: Path, name: str) -> None:
     """Flatten → (Gemm → Relu)×2 → Gemm → Sigmoid, static [1,16,96] in / [1,1] out, opset 13."""
     import onnx
     from onnx import TensorProto, helper, numpy_helper
@@ -301,7 +368,7 @@ def export_onnx(clf, out: Path) -> None:
         nodes.append(helper.make_node("Gemm", [prev, f"W{i}", f"b{i}"], [f"z{i}"]))
         nodes.append(helper.make_node("Sigmoid" if last else "Relu", [f"z{i}"], ["output" if last else f"a{i}"]))
         prev = f"a{i}"
-    graph = helper.make_graph(nodes, "hey_claudia", [helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 16, 96])],
+    graph = helper.make_graph(nodes, name, [helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 16, 96])],
                               [helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, 1])], inits)
     model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)], producer_name="claude-talk wake-train")
     model.ir_version = 8
@@ -319,23 +386,29 @@ def verify(out: Path, feat: np.ndarray, clf) -> float:
     return float(np.abs(a - b).max())
 
 
-def report(clf, feat: np.ndarray, y: np.ndarray, tag: list[str], test: np.ndarray) -> None:
+def report(clf, feat: np.ndarray, y: np.ndarray, tag: list[str], test: np.ndarray, prof: dict) -> None:
     p = clf.predict_proba(feat.reshape(len(feat), -1))[:, 1]
     yt, pt = y[test], p[test]
     print(f"  held-out: recall@0.5 {np.mean(pt[yt == 1] >= 0.5):.3f}  false-positive@0.5 {np.mean(pt[yt == 0] >= 0.5):.4f}  "
           f"(pos {int((yt == 1).sum())}, neg {int((yt == 0).sum())})")
     tags = np.array(tag)
-    for t in NEAR_MISS[:8] + ["sentence", "room", "noise", "early hey Claudia", "prefix hey Claudia"]:
+    first = prof["positive"][0]
+    for t in prof["near_miss"][:8] + prof["cross"] + ["sentence", "room", "noise", f"early {first}", f"prefix {first}"]:
         m = tags == t
         if m.any():
             print(f"    neg '{t}': max {p[m].max():.3f}  mean {p[m].mean():.3f}  n={int(m.sum())}")
-    for t in POSITIVE:
+    for t in prof["positive"]:
         m = tags == t
         print(f"    pos '{t}': min {p[m].min():.3f}  mean {p[m].mean():.3f}  n={int(m.sum())}")
 
 
 def main() -> None:
     a = parse_args()
+    prof, slug = profile(a.phrase), "_".join(a.phrase.lower().replace(",", " ").split())
+    # Render caches are keyed by the profile, so editing its texts re-renders; hey_claudia keeps its pre-0.6 names.
+    import hashlib
+    prefix = "" if slug == "hey_claudia" else f"{slug}-{hashlib.sha1(json.dumps(prof, sort_keys=True).encode()).hexdigest()[:8]}-"
+    print(f"phrase: {a.phrase!r} → {slug}")
     workdir = Path(a.workdir); workdir.mkdir(parents=True, exist_ok=True)
     voices = find_voices()
     if not voices:
@@ -344,18 +417,20 @@ def main() -> None:
     room = record_room(workdir, a.room_seconds)
     print(f"room noise: {len(room) / SR:.0f} s")
     print("rendering…")
-    clips = render_all(voices, workdir, a.speakers_per_voice, a.jobs, a.seed)
+    clips = render_all(voices, workdir, a.speakers_per_voice, a.jobs, a.seed, prof, prefix)
     del voices
-    feat, y, tag = embed(examples(clips, room, a.seed))
+    for k, vs in render_kokoro(workdir, a.kokoro_sid).items():
+        clips.setdefault(k, []).extend(vs)
+    feat, y, tag = embed(examples(clips, room, a.seed, prof))
     del clips
     print(f"examples: {len(y)} ({int(y.sum())} positive, {int((y == 0).sum())} negative)")
     rng = np.random.default_rng(a.seed)
     test = rng.random(len(y)) < 0.1
     clf = fit(feat[~test], y[~test], a.seed)
     print(f"trained: {clf.n_iter_} epochs, best validation score {clf.best_validation_score_:.4f}")
-    report(clf, feat, y, tag, test)
-    out = Path(a.out)
-    export_onnx(clf, out)
+    report(clf, feat, y, tag, test, prof)
+    out = Path(a.out or ROOT / "models" / f"{slug}.onnx")
+    export_onnx(clf, out, slug)
     print(f"wrote {out} ({out.stat().st_size // 1024} KB); onnx vs sklearn max |Δ| = {verify(out, feat, clf):.2e}")
 
 

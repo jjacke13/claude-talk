@@ -1,6 +1,8 @@
 // Wake word: a detector process (bin/wake-detector → openwakeword) hears the mic all the time.
 // On "hey claudia": cut current speech, beep, record until silence, transcribe, hand the text
 // to `onText` — hold-to-talk without the key. Opt-in (TALK_WAKE=on), Linux only for now.
+// TALK_WAKE_EXTRA adds more words to the same detector, each with its own action (a sound today);
+// those never record, never reach the session, and are ignored while anything is being said.
 //
 // States (`state` below), one at a time:
 //   idle       detector running, nothing recording. Wake word → listening. Claudia's speech
@@ -14,9 +16,9 @@ import { closeSync, existsSync, openSync, readFileSync, readSync, unlinkSync } f
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { takeLock } from './hold.ts'
-import { beepPcm, listenDone, listenStart, listenStep, rms, splitCmd, type Config, type ListenOpts } from './talk.ts'
+import { beepPcm, listenDone, listenStart, listenStep, parseDetection, parseWakeExtra, rms, splitCmd, thresholdFor, wakeAction, wakeKey, type Config, type ListenOpts, type WakeExtra } from './talk.ts'
 import { uiListening } from './ui.ts'
-import { LOG_FILE, SAY_PID, STATE_DIR, alive, log, markSpoken, startRecording, stopRecording, transcribe, voiceRate } from './voice.ts'
+import { LOG_FILE, SAY_PID, STATE_DIR, alive, enqueueSound, loadRawConfig, log, markSpoken, startRecording, stopRecording, transcribe, voiceRate } from './voice.ts'
 
 const LOCK = join(STATE_DIR, 'wake.lock')
 const VENV_PY = join(STATE_DIR, 'wake', 'venv', 'bin', 'python')
@@ -44,6 +46,21 @@ export function modelArg(v: string): string {
   if (existsSync(shipped)) return shipped
   if (v === 'hey_claudia') { log(`${shipped} missing — using the prebuilt hey_jarvis (say "hey jarvis")`); return 'hey_jarvis' }
   return v
+}
+
+// TALK_WAKE_EXTRA entries whose model resolves to an existing .onnx (other than the main one), each
+// with its detector threshold. Problems are logged and the entry dropped; the main word still works.
+function wakeExtras(cfg: Config, main: string): { extra: WakeExtra; model: string; threshold: string }[] {
+  const { extras, errors } = parseWakeExtra(cfg.TALK_WAKE_EXTRA, process.env.HOME ?? '')
+  for (const e of errors) log(`TALK_WAKE_EXTRA: ${e} — skipped`)
+  const raw = loadRawConfig()
+  return extras.flatMap(extra => {
+    const model = modelArg(extra.name)
+    if (!model.endsWith('.onnx') || !existsSync(model)) { log(`TALK_WAKE_EXTRA: ${extra.name}: no model (${model}) — skipped`); return [] }
+    if (wakeKey(model) === wakeKey(main)) { log(`TALK_WAKE_EXTRA: ${extra.name} is the main wake word — skipped`); return [] }
+    if (extra.action.kind === 'sound' && !existsSync(extra.action.arg)) log(`TALK_WAKE_EXTRA: ${extra.name}: ${extra.action.arg} missing (kept; add the file)`)
+    return [{ extra, model, threshold: thresholdFor(extra.name, raw, cfg.TALK_WAKE_THRESHOLD) }]
+  })
 }
 
 export function startWake(cfg: Config, onText: (text: string) => void): void {
@@ -111,7 +128,20 @@ export function startWake(cfg: Config, onText: (text: string) => void): void {
     finally { if (wav) rm(wav); state = 'idle'; cur = undefined }
   }
 
-  async function onDetect(line: string): Promise<void> {
+  // An extra word: its action, nothing else. Never while recording the user or while anything is
+  // being said — that includes its own sound, which plays through bin/say (say.pid).
+  function runExtra(x: WakeExtra, heard: string): void {
+    if (state === 'listening' || alive(SAY_PID)) { log(`wake word ignored while ${state === 'listening' ? 'listening' : 'speaking'} (${heard})`); return }
+    log(`wake word heard (${heard}) → ${x.action.kind}`)
+    switch (x.action.kind) {
+      case 'sound': enqueueSound(x.action.arg); break
+    }
+  }
+
+  async function onDetect(d: { model: string; score: number }): Promise<void> {
+    const line = `${d.model} ${d.score.toFixed(2)}`
+    const x = wakeAction(d.model, extras.map(e => e.extra))
+    if (x) return runExtra(x, line)
     if (state === 'listening') return          // already recording the user
     // The model was trained on the very piper voice Claudia speaks with and fires on her own
     // sentences (0.99, live 2026-09-13). Barge-in by voice is therefore opt-in; the key still interrupts.
@@ -146,14 +176,17 @@ export function startWake(cfg: Config, onText: (text: string) => void): void {
     if (!now && state === 'idle' && armed) void followUp()
   }, SAY_POLL_MS)
 
+  const mainModel = modelArg(cfg.TALK_WAKE_MODEL)
+  const extras = wakeExtras(cfg, mainModel)
   function spawnDetector(): void {
     const t0 = Date.now()
-    const model = modelArg(cfg.TALK_WAKE_MODEL)
-    det = Bun.spawn([DETECTOR, '--model', model, '--threshold', cfg.TALK_WAKE_THRESHOLD], { stdin: 'ignore', stdout: 'pipe', stderr: openSync(LOG_FILE, 'a') })
-    log(`wake word: starting detector (model ${model}, threshold ${cfg.TALK_WAKE_THRESHOLD})`)
+    const args = ['--model', mainModel, '--threshold', cfg.TALK_WAKE_THRESHOLD, ...extras.flatMap(e => ['--model', e.model, '--threshold', e.threshold])]
+    det = Bun.spawn([DETECTOR, ...args], { stdin: 'ignore', stdout: 'pipe', stderr: openSync(LOG_FILE, 'a') })
+    log(`wake word: starting detector (model ${mainModel}, threshold ${cfg.TALK_WAKE_THRESHOLD}${extras.map(e => `; ${e.extra.name} → ${e.extra.action.kind}, threshold ${e.threshold}`).join('')})`)
     void readLines(det.stdout as ReadableStream<Uint8Array>, line => {
+      const d = parseDetection(line)
       if (line === 'ready') log(`say "${cfg.TALK_WAKE_WORD}" to talk`)
-      else if (/^\S+ [\d.]+$/.test(line)) void onDetect(line)
+      else if (d) void onDetect(d)
       else log(`detector: ${line}`)
     })
     void det.exited.then(code => {

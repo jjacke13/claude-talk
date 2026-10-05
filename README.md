@@ -76,14 +76,14 @@ multilingual whisper model (`ggml-base.bin`, not `*.en.bin`) and a matching pipe
 | script | does |
 |---|---|
 | `bin/talk` | push-to-talk → inbox (`--print` = transcript only + marker, used by `/talk:listen`) |
-| `bin/say "text"` | speak now |
+| `bin/say "text"` · `bin/say --wav f.wav` | speak now · play a sound through the same path |
 | `bin/tts out.ogg "text"` | render ogg/opus + print duration — for SimpleX/Telegram voice bubbles |
 | `bin/speak-last` | the Stop hook (reads hook JSON on stdin) |
-| `bin/wake-check.py [s] [model]` | listens `s` seconds, prints the max score of `model` (default `hey_jarvis`; e.g. `models/hey_claudia.onnx`) |
+| `bin/wake-check.py [s \| f.wav] [model …]` | listens `s` seconds (or streams a WAV), prints the max score of each model (default `hey_jarvis`; e.g. `models/hey_claudia.onnx`) |
 | `bin/wake-listen` | the detector process (Python): mic → openwakeword → one `<model> <score>` line per detection |
 | `bin/wake-detector` | runs `wake-listen` inside the nix dev shell + venv; what `wake.ts` spawns |
 | `ui.ts` + `ui.html` | companion page server (TALK_UI=on): SSE events, orb page |
-| `bin/wake-train` | trains `models/hey_claudia.onnx` from piper voices (CPU, ~20 min); see "Wake word" |
+| `bin/wake-train [--phrase "hey michael"]` | trains `models/<phrase>.onnx` from piper voices (CPU, ~20 min); see "Wake word", "More wake words" |
 
 ## Wake word — "hey claudia"
 
@@ -141,6 +141,48 @@ from [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices), ~75 MB
 own feature extractor and fits a small MLP written as ONNX. Validation with piper through the speaker:
 silence 0.016, "hey claudia" 0.998, "hey jarvis" 0.105, "hey claude" 0.036 (threshold 0.5). Trained on
 synthetic voices only — if your voice scores low, lower `TALK_WAKE_THRESHOLD` or retrain with more voices.
+
+## More wake words
+
+The one detector can run several models on the same mic stream; each extra word gets its own action
+instead of a turn. `TALK_WAKE_EXTRA` is a comma-separated list of `name=action`:
+
+```
+TALK_WAKE_EXTRA=hey_michael=sound:~/.claude/channels/talk/sounds/heehee.wav
+TALK_WAKE_THRESHOLD_HEY_MICHAEL=0.7     # optional, per word; default TALK_WAKE_THRESHOLD
+```
+
+`name` resolves like `TALK_WAKE_MODEL` (bare name = `models/<name>.onnx`, or a path) and must be an
+existing `.onnx`; a bad entry is logged and skipped, the main word keeps working. Actions:
+- `sound:<wav>` — plays the file through `bin/say --wav` (16-bit PCM WAV, any rate; stereo plays the
+  first channel). It writes `say.pid` like speech, so the capture guard applies and the talk key cuts it.
+
+An extra word never records, never transcribes, never reaches the session: Claudia does not hear it.
+It is ignored while anything is being said (its own sound included) or while the main word is
+recording. talk.log: `wake word heard (hey_michael 0.93) → sound`. Applies at the next launch.
+New action kinds (planned: `session:<url>`, a word that talks to another session) go into
+`WAKE_ACTIONS` in talk.ts and `runExtra` in wake.ts.
+
+**hey michael → hee hee.** `models/hey_michael.onnx` ships, trained with
+`bin/wake-train --phrase "hey michael"`: its own spellings and near-misses (Michael, hey Mike,
+hey Michelle, hey Mitchell, …), one "hey Claudia" render per training speaker as negatives so the two
+words do not cross-fire, and the plain sentences also in Claudia's Kokoro voice (af_heart, from the
+warm Kokoro server when it is up), plus short phrases that use the name inside speech ("with Michael",
+"ask Michael", …) — without those, v1 fired on "the meeting with Michael is at noon" for every voice.
+Scored on 12 Kokoro speakers never used for its positives (`wake-check.py` on rendered WAVs, threshold
+0.85): "hey Michael" 24/24, "hey Claudia" 0/12, "the meeting with Michael is at noon" 0/12, plain
+sentences 0/12, "Michelle" 0/12; residual false hits "Michael." 2/12, "hey Mike" 1/12. Synthetic voices
+only, like hey_claudia — tune `TALK_WAKE_THRESHOLD_HEY_MICHAEL` from live use. Any other phrase: `bin/wake-train --phrase "hey robot"` uses
+generic spellings and near-misses (add a profile to `PROFILES` for better ones). The default sound
+was rendered by Kokoro and pitched up:
+
+```
+# raw s16le 24 kHz from the Kokoro socket ("Hee hee hee!", sid 3, speed 1.15) → hee.raw, then
+env -u LD_LIBRARY_PATH sox -t raw -r 24000 -e signed -b 16 -c 1 hee.raw ~/.claude/channels/talk/sounds/heehee.wav pitch 400 rate 16000 norm -3
+```
+
+Replace it with any recording (`ffmpeg -i in.m4a -ac 1 -c:a pcm_s16le heehee.wav`).
+Score a recording without the mic: `wake-check.py clip.wav models/hey_michael.onnx models/hey_claudia.onnx`.
 
 ## Transcription server (optional)
 

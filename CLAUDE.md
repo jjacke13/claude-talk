@@ -89,6 +89,17 @@ PreToolUse narration opt-in `TALK_NARRATE`; `TALK_REPLY=voice` → channel meta 
   warm first audio 0.8 s on a 3-sentence reply. **Gotchas:** host `LD_LIBRARY_PATH` (alsa-lib, newer glibc) breaks the sherpa
   import → wrapper unsets it; AF_UNIX path ≤108 bytes (scratchpad paths are too long — tests use os.tmpdir()); two
   `devShells.${system}.x` attrs = "dynamic attribute already defined" → one attrset. Output length varies ±0.01 s run to run (model).
+- **0.6.0 more wake words** (2026-10-05, worker on laptop's instruction): `TALK_WAKE_EXTRA="name=kind:arg,…"` (talk.ts
+  parseWakeExtra / wakeAction / parseDetection / thresholdFor `TALK_WAKE_THRESHOLD_<NAME>` read via voice.ts loadRawConfig — resolveConfig
+  drops unknown keys). One wake-listen, N `--model/--threshold` pairs, refractory per model. Only kind `sound` → enqueueSound →
+  `bin/say --wav` (parseWav, say.pid). Extras ignored while say.pid alive or state=listening; never reach the session.
+  `bin/wake-train --phrase` = PROFILES (positive/near_miss/hard/cross) + generic fallback; non-claudia render caches keyed
+  `<slug>-<sha1(profile)[:8]>-…npz` (editing a profile re-renders; v1 reused stale caches would have silently ignored new texts);
+  Kokoro af_heart sentence negatives via the kokoro socket (`kokoro-3.npz`). `wake-check.py` takes a .wav and several models.
+  **Lesson:** held-out eval = Kokoro speakers rendered to WAV → wake-check; it caught v1 firing 12/12 on "the meeting with Michael
+  is at noon" (training had the name only bare) — fixed with in-speech name phrases as hard negatives. heehee.wav = Kokoro "Hee hee
+  hee!" sid 3 speed 1.15, `sox … pitch 400 rate 16000 norm -3` (whisper hears "See he he"). sox/soxi also need `env -u LD_LIBRARY_PATH`.
+  Not validated: Vaios's live voice, hee-hee retrigger in the room.
 - Not done: Vaios's real voice against hey_claudia.onnx (only synthetic voices so far — if it misses, lower TALK_WAKE_THRESHOLD or
   add voices to wake/voices and retrain), Greek voice download, VAD, streaming (needs Agent SDK/hades), SimpleX wiring, Windows wake.
 

@@ -52,6 +52,7 @@ Keys and defaults:
 | `TALK_WAKE_WORD` | `hey claudia` | what the user says — shown in logs/prompts; the model decides what is heard |
 | `TALK_WAKE_MODEL` | `hey_claudia` | bare name = `<plugin-root>/models/<name>.onnx`; or an openwakeword prebuilt name (`hey_jarvis`), or a path |
 | `TALK_WAKE_FOLLOWUP_S` | `6` | seconds after Claudia stops speaking in which the next utterance needs no wake word |
+| `TALK_WAKE_EXTRA` | (empty) | more wake words on the same detector: `name=sound:<wav>,…` — the word plays the sound, no turn (README "More wake words"); `TALK_WAKE_THRESHOLD_<NAME>` per word |
 | `TALK_WAKE_BARGEIN` | `off` | `on` = the wake word also cuts Claudia off mid-sentence (her own voice can trigger the model — the talk key always interrupts) |
 | `TALK_STT_URL` | (empty) | transcription server, e.g. `http://127.0.0.1:7581/inference` (whisper.cpp `whisper-server`) or an OpenAI-compatible `/v1/audio/transcriptions`; empty = local `whisper-cli`; any failure falls back to whisper-cli |
 | `TALK_STT_LANG` | (empty) | language sent to the server; empty = `TALK_LANG`; `auto` allowed |
@@ -75,6 +76,8 @@ Keys and defaults:
 4. Wake word: show `TALK_WAKE`, `TALK_WAKE_WORD`, `TALK_WAKE_MODEL`, `TALK_WAKE_FOLLOWUP_S`, `TALK_WAKE_BARGEIN`, and whether the runtime
    exists: `test -x <state-dir>/wake/venv/bin/python` (absent → "wake word runtime not set up: see README 'Wake word'").
    If `TALK_WAKE_MODEL` is a bare name, `test -f <plugin-root>/models/<name>.onnx`.
+   For each `TALK_WAKE_EXTRA` entry show name, action, threshold (`TALK_WAKE_THRESHOLD_<NAME>` or the default), and
+   `test -f` its model and its sound file.
    Companion UI: show `TALK_UI`; when `on`, print the URL `http://127.0.0.1:<TALK_UI_PORT>`.
    TTS: show `TALK_TTS`; when `kokoro`, `test -f` `TALK_KOKORO_MODEL` and `<TALK_KOKORO_DIR>/voices.bin`, and say whether the
    warm server is up (`test -S <state-dir>/kokoro.sock`).
@@ -83,13 +86,15 @@ Keys and defaults:
 5. Remind: push-to-talk is `bun <plugin-root>/bin/talk` (or `talk` if on PATH); replies are spoken per `TALK_SPEAK`;
    with `TALK_WAKE=on`, saying the wake word does the same as the key.
 
-### `lang <code>` · `model <path>` · `voice <path>` · `speak mirror|on|off` · `reply voice|both` · `player <cmd>` · `max <chars>` · `wake on|off` · `wakeword <name>` · `wakemodel <path>` · `followup <s>` · `ui on|off` · `ui fps <idle> [active]` · `bargein on|off` · `stt <url|off>` · `stt lang <code|auto>` · `stt token <token>` · `home <dir>[,<dir>]|off` · `tts piper|kokoro`
+### `lang <code>` · `model <path>` · `voice <path>` · `speak mirror|on|off` · `reply voice|both` · `player <cmd>` · `max <chars>` · `wake on|off` · `wakeword <name>` · `wakemodel <path>` · `followup <s>` · `ui on|off` · `ui fps <idle> [active]` · `bargein on|off` · `stt <url|off>` · `stt lang <code|auto>` · `stt token <token>` · `home <dir>[,<dir>]|off` · `tts piper|kokoro` · `wake extra <name>=sound:<wav>|off`
 
 Set the matching key (`TALK_LANG`, `TALK_MODEL`, `TALK_VOICE`, `TALK_SPEAK`, `TALK_PLAYER`, `TALK_RECORDER`, `TALK_KEY`, `TALK_SPEED`, `TALK_NARRATE`, `TALK_REPLY`,
 `TALK_MAX_SPEAK_CHARS`, `TALK_WAKE`, `TALK_WAKE_WORD`, `TALK_WAKE_MODEL`, `TALK_WAKE_FOLLOWUP_S`, `TALK_UI`). `ui fps <idle> [active]` sets
 `home <dir>[,<dir>]` sets `TALK_HOME` (comma-separated project dirs; only sessions started there own the mic, wake word, page and `speak` — other sessions idle); `home off` clears it. `TALK_UI_FPS` and, when given, `TALK_UI_FPS_ACTIVE` (integers 1–120; refuse anything else). `stt <url>` sets `TALK_STT_URL`
 (must start with `http://` or `https://`; `stt off` writes an empty value), `stt lang` sets `TALK_STT_LANG`, `stt token` sets
 `TALK_STT_TOKEN` — after writing a token run `chmod 600 <state-dir>/config` and confirm with "token set", never with the value.
+`wake extra <name>=sound:<wav>` adds (or replaces, same name) an entry in `TALK_WAKE_EXTRA` — refuse unless
+`<plugin-root>/models/<name>.onnx` (or the path) and the wav exist; `wake extra off` clears it; applies at the next launch.
 `tts piper|kokoro` sets `TALK_TTS` (refuse other values); applies to the next utterance. STT changes apply to the next utterance (no relaunch). Keep other lines. Create the directory with `mkdir -p` if needed.
 For `model`/`voice`, `test -f` the path first and refuse with a clear message if absent
 (a non-English model needs a multilingual ggml, e.g. `ggml-base.bin`, not `*.en.bin`).
