@@ -1,7 +1,7 @@
 // Hold-to-talk: read keyboards at the evdev level, record while TALK_KEY is held, transcribe
 // on release, hand the text to `onText`. Lives inside the MCP server so enabling the plugin
 // is all the user does. Needs the user in the `input` group; otherwise logs once and gives up.
-import { createReadStream, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'fs'
+import { createReadStream, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { SAY_PID, STATE_DIR, log, markSpoken, startRecording, stopRecording, transcribe, type Config } from './voice.ts'
@@ -30,11 +30,19 @@ export function keyboardDevices(): string[] {
   } catch { return [] }
 }
 
+// Boot time in ms from /proc/stat; 0 where there is none (Windows), which turns the check off.
+function bootTimeMs(): number {
+  try { return Number(/^btime (\d+)/m.exec(readFileSync('/proc/stat', 'utf8'))?.[1] ?? 0) * 1000 } catch { return 0 }
+}
+
 // Only one server per machine may own the key (two sessions would both answer).
+// A lock written before this boot is stale even when its PID is alive: PIDs restart at boot, and
+// after a reboot the old talk server's PID belonged to blueman-applet — every server waited forever.
 export function takeLock(lock = LOCK): boolean {
   try {
     const pid = Number(readFileSync(lock, 'utf8'))
-    if (pid && pid !== process.pid) { try { process.kill(pid, 0); return false } catch {} }   // alive → not ours
+    const stale = statSync(lock).mtimeMs < bootTimeMs()
+    if (pid && pid !== process.pid && !stale) { try { process.kill(pid, 0); return false } catch {} }   // alive → not ours
   } catch {}
   writeFileSync(lock, String(process.pid))
   return true
