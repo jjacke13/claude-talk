@@ -4,6 +4,7 @@
 import { appendFileSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
+import { fileURLToPath } from 'url'
 import { KOKORO_RATE, kokoroArgs, kokoroRequest, parseConfig, parseWav, resolveConfig, speechSpeed, splitCmd, ttsBackend, type Config } from './talk.ts'
 
 export const STATE_DIR = process.env.TALK_STATE_DIR
@@ -89,7 +90,7 @@ export async function ensureKokoro(cfg: Config, sock = KOKORO_SOCK): Promise<voi
   if (await canConnect(sock)) return
   requireFile(cfg.TALK_KOKORO_MODEL, 'TALK_KOKORO_MODEL')
   requireFile(join(cfg.TALK_KOKORO_DIR, 'voices.bin'), 'TALK_KOKORO_DIR')
-  const bin = new URL('./bin/kokoro-server', import.meta.url).pathname
+  const bin = fileURLToPath(new URL('./bin/kokoro-server', import.meta.url))
   Bun.spawn(['setsid', '-f', bin, ...kokoroArgs(cfg, sock)], { stdin: 'ignore', stdout: 'ignore', stderr: openSync(LOG_FILE, 'a') })
   log(`kokoro: starting server on ${sock}`)
   for (const until = Date.now() + KOKORO_START_MS; Date.now() < until;) {
@@ -239,7 +240,7 @@ function enqueueSay(argv: string[], interrupt = false): number {
     if (interrupt) process.kill(pid, 'SIGTERM'); else after = String(pid)
   } catch {}
   const logFd = openSync(LOG_FILE, 'a')
-  const args = ['bun', new URL('./bin/say', import.meta.url).pathname, ...(after ? ['--after', after] : []), ...argv]
+  const args = ['bun', fileURLToPath(new URL('./bin/say', import.meta.url)), ...(after ? ['--after', after] : []), ...argv]
   const p = Bun.spawn(args, { stdin: 'ignore', stdout: 'ignore', stderr: logFd })
   p.unref()
   writeFileSync(SAY_PID, String(p.pid))

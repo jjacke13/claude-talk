@@ -24,9 +24,11 @@ which ffmpeg                                   # only for bin/tts (voice files),
 - Missing binaries: NixOS/Nix → `nix develop /abs/path/claude-talk` gives `bun whisper-cpp piper-tts ffmpeg`
   (PipeWire tools come from the host). Debian/Ubuntu: `apt install pipewire-audio-client-libraries`
   (or `pipewire-bin`), whisper.cpp and piper from their releases.
-- **Windows / macOS (UNTESTED as of 2026-09-12):** install SoX (`sox`, provides `rec`/`play`) plus the
-  whisper.cpp and piper Windows/macOS releases; put all on PATH. Audio then uses the SoX defaults
-  automatically (no config needed). Hold-to-talk on Windows polls `user32.dll GetAsyncKeyState`
+- **Windows / macOS (UNTESTED as of 2026-10-06):** install SoX plus the whisper.cpp and piper
+  Windows/macOS releases; put all on PATH. Audio then uses the SoX defaults automatically (no config
+  needed): `rec`/`play` on macOS; on Windows only `sox.exe` exists, so the defaults call
+  `sox … -t waveaudio default` (the default mic and speakers). On Windows follow the
+  "Windows quick path" at the end of this file. Hold-to-talk on Windows polls `user32.dll GetAsyncKeyState`
   — no group membership; step 2 is Linux-only. On macOS hold-to-talk is not implemented (use
   `/talk:listen`). Expect rough edges; report the first error verbatim.
 - Models (files, not packages):
@@ -175,18 +177,25 @@ Retraining the model (new voices, other spelling): `bin/wake-train` inside the s
   avoids a duplicate server.
 - Tests: `bun test` in the repo (pure helpers; no mic needed).
 
-## Windows quick path (UNTESTED as of 2026-09-12 — report the first error verbatim)
+## Windows quick path (UNTESTED as of 2026-10-06 — report the first error verbatim)
 
-PowerShell, as the user:
+Claude Code on Windows runs hooks through Git Bash; it must already be installed (Claude Code needs it).
+Only hold-to-talk + piper work on Windows: no wake word, no Kokoro. PowerShell, as the user:
 
 ```powershell
 winget install Oven-sh.Bun                       # bun
-winget install ChrisBagwell.SoX                  # rec / play (default mic + speakers)
+winget install ChrisBagwell.SoX                  # sox.exe — winget does NOT put it on PATH:
+# add the SoX install folder (e.g. C:\Program Files (x86)\sox-14-4-2) to the user PATH, open a new
+# terminal, then `sox --version` must work. The plugin plays/records via `sox ... -t waveaudio default`.
 # whisper.cpp: download whisper-bin-x64.zip from https://github.com/ggml-org/whisper.cpp/releases
 # piper:       download piper_windows_amd64.zip  from https://github.com/rhasspy/piper/releases
 # unzip both into C:\tools\  and add C:\tools\whisper and C:\tools\piper to PATH (whisper-cli.exe, piper.exe)
 mkdir $HOME\.claude\channels\talk\models
-# put ggml-base.en.bin, <voice>.onnx and <voice>.onnx.json into that models folder
+$m = "$HOME\.claude\channels\talk\models"
+Invoke-WebRequest https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin -OutFile $m\ggml-base.en.bin
+$v = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx"
+Invoke-WebRequest $v -OutFile $m\en_US-lessac-medium.onnx
+Invoke-WebRequest "$v.json" -OutFile $m\en_US-lessac-medium.onnx.json
 @"
 TALK_MODEL=$HOME\.claude\channels\talk\models\ggml-base.en.bin
 TALK_VOICE=$HOME\.claude\channels\talk\models\en_US-lessac-medium.onnx
@@ -196,8 +205,18 @@ claude plugin install talk@claude-talk
 claude --dangerously-load-development-channels plugin:talk@claude-talk
 ```
 
-Check: `bun say.exe`-style paths are not needed — `bun <plugin-root>\bin\say hello` must be audible,
-then hold Right Alt and speak. No `input` group step on Windows.
+Check, in order (stop at the first failure and report it verbatim):
+
+```powershell
+whisper-cli --help; piper --help; sox --version            # all three on PATH
+$say = (Get-ChildItem $HOME\.claude\plugins\cache -Recurse -Filter say | Where-Object FullName -like '*\bin\say' | Select-Object -First 1).FullName
+bun $say "hello"                                           # must be audible
+```
+
+Then, inside the session: hold Right Alt, speak, release → a `<channel …talk…>` turn arrives and the
+reply is spoken. Errors land in `$HOME\.claude\channels\talk\talk.log`. No `input` group step on Windows.
+Right Alt on keyboard layouts with AltGr (e.g. German) may type characters while held — then
+`/talk:configure key KEY_RIGHTCTRL`.
 
 ## How speech is timed (for the agent answering a spoken turn)
 

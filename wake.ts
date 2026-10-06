@@ -15,6 +15,7 @@
 import { closeSync, existsSync, openSync, readFileSync, readSync, unlinkSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
+import { fileURLToPath } from 'url'
 import { takeLock } from './hold.ts'
 import { beepPcm, listenDone, listenStart, listenStep, parseDetection, parseWakeExtra, rms, splitCmd, thresholdFor, wakeAction, wakeKey, type Config, type ListenOpts, type WakeExtra } from './talk.ts'
 import { uiListening } from './ui.ts'
@@ -22,8 +23,8 @@ import { LOG_FILE, SAY_PID, STATE_DIR, alive, enqueueSound, loadRawConfig, log, 
 
 const LOCK = join(STATE_DIR, 'wake.lock')
 const VENV_PY = join(STATE_DIR, 'wake', 'venv', 'bin', 'python')
-const DETECTOR = new URL('./bin/wake-detector', import.meta.url).pathname
-const MODELS_DIR = new URL('./models/', import.meta.url).pathname
+const DETECTOR = fileURLToPath(new URL('./bin/wake-detector', import.meta.url))
+const MODELS_DIR = fileURLToPath(new URL('./models/', import.meta.url))
 const CAP_MS = 20_000, POLL_MS = 100, SAY_POLL_MS = 300, RESTART_AFTER_MS = 60_000
 const GRACE_MS = 500   // the beep's echo and the wake word's tail land here: recorded, but not counted as speech
 

@@ -9,7 +9,13 @@ export const AUDIO_DEFAULTS: Record<string, { TALK_PLAYER: string; TALK_RECORDER
     TALK_PLAYER: 'pw-play --raw --rate {rate} --channels 1 --format s16 -',
     TALK_RECORDER: 'pw-record --raw --rate 16000 --channels 1 --format s16 {raw}',
   },
-  // SoX is the cross-platform fallback (default device on Windows/macOS). UNTESTED on Windows.
+  // Windows SoX ships only sox.exe (no rec/play): name the waveaudio device; SoX resamples to/from it.
+  // UNTESTED — written before a Windows box existed.
+  win32: {
+    TALK_PLAYER: 'sox -q -t raw -r {rate} -e signed -b 16 -c 1 - -t waveaudio default',
+    TALK_RECORDER: 'sox -q -t waveaudio default -t raw -r 16000 -e signed -b 16 -c 1 {raw}',
+  },
+  // SoX rec/play elsewhere (macOS: brew install sox).
   other: {
     TALK_PLAYER: 'play -q -t raw -r {rate} -e signed -b 16 -c 1 -',
     TALK_RECORDER: 'rec -q -t raw -r 16000 -e signed -b 16 -c 1 {raw}',

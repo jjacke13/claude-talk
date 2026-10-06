@@ -8,7 +8,8 @@ as a normal turn. Claude answers → **piper** → your speakers. Nothing leaves
 ## Prerequisites (all on PATH)
 
 `bun`, `whisper-cli` (whisper.cpp), `piper`, and an audio pair: `pw-record`/`pw-play` (PipeWire,
-Linux default) or SoX `rec`/`play` (default on Windows/macOS — **untested**, see AGENTS.md).
+Linux default), SoX `rec`/`play` (macOS) or `sox` with the `waveaudio` device (Windows — **untested**,
+see AGENTS.md "Windows quick path").
 `ffmpeg` only for `bin/tts`. A whisper ggml model and a piper voice (`.onnx` + `.onnx.json`);
 defaults point at `~/.hermes/models/…`. `nix develop` in this repo provides the binaries.
 

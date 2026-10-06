@@ -45,7 +45,9 @@ test('sanitizeForSpeech: keeps snake_case, strips _emphasis_, quoted heading, lo
 
 test('platform audio defaults + splitCmd', () => {
   expect(resolveConfig('', {}, '/h', 'linux').TALK_RECORDER).toContain('pw-record')
-  expect(resolveConfig('', {}, '/h', 'win32').TALK_PLAYER).toContain('play')
+  expect(resolveConfig('', {}, '/h', 'win32').TALK_PLAYER).toBe('sox -q -t raw -r {rate} -e signed -b 16 -c 1 - -t waveaudio default')
+  expect(resolveConfig('', {}, '/h', 'win32').TALK_RECORDER).toBe('sox -q -t waveaudio default -t raw -r 16000 -e signed -b 16 -c 1 {raw}')
+  expect(resolveConfig('', {}, '/h', 'darwin').TALK_PLAYER).toContain('play -q')
   expect(resolveConfig('TALK_PLAYER=ffplay -i pipe:0 -ar {rate}', {}, '/h', 'win32').TALK_PLAYER).toBe('ffplay -i pipe:0 -ar {rate}')
   expect(splitCmd(' pw-play  --rate {rate} {raw} - ', { rate: '22050', raw: '/t/x.raw' })).toEqual(['pw-play', '--rate', '22050', '/t/x.raw', '-'])
 })
